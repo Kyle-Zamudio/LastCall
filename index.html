@@ -639,9 +639,11 @@
     }
 
     // Business Dashboard
-    function BusinessDashboard({ user, onLogout }) {
+    function BusinessDashboard({ user: initialUser, onLogout }) {
+      const [user, setUser] = useState(initialUser);
       const [shifts, setShifts] = useState([]);
       const [showPostShift, setShowPostShift] = useState(false);
+      const [showSettings, setShowSettings] = useState(false);
       const [selectedShift, setSelectedShift] = useState(null);
       const [loading, setLoading] = useState(true);
 
@@ -659,8 +661,17 @@
         setLoading(false);
       };
 
+      const updateUser = (updatedUser) => {
+        setUser(updatedUser);
+        localStorage.setItem('lastcall_user', JSON.stringify(updatedUser));
+      };
+
       if (showPostShift) {
         return <PostShiftForm user={user} onBack={() => setShowPostShift(false)} onSuccess={() => { setShowPostShift(false); loadShifts(); }} />;
+      }
+
+      if (showSettings) {
+        return <BusinessSettings user={user} onBack={() => setShowSettings(false)} onSave={(updated) => { updateUser(updated); setShowSettings(false); }} />;
       }
 
       if (selectedShift) {
@@ -678,7 +689,15 @@
                   <p className="text-slate-400 text-sm">{user.pos_system || 'No POS set'}</p>
                 </div>
               </div>
-              <button onClick={onLogout} className="text-slate-400 hover:text-white text-sm">Log out</button>
+              <div className="flex items-center gap-4">
+                <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+                <button onClick={onLogout} className="text-slate-400 hover:text-white text-sm">Log out</button>
+              </div>
             </div>
           </header>
 
@@ -732,6 +751,7 @@
       const [startTime, setStartTime] = useState('');
       const [endTime, setEndTime] = useState('');
       const [hourlyRate, setHourlyRate] = useState('');
+      const [tipsIncluded, setTipsIncluded] = useState(false);
       const [notes, setNotes] = useState('');
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
@@ -750,6 +770,7 @@
             start_time: startTime,
             end_time: endTime,
             hourly_rate: parseFloat(hourlyRate),
+            tips_included: tipsIncluded,
             notes,
             status: 'open'
           }]);
@@ -836,9 +857,23 @@
                   className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                   min="0"
                   step="0.50"
-                  placeholder="25.00"
+                  placeholder={tipsIncluded ? "2.13" : "25.00"}
                   required
                 />
+              </div>
+
+              <div className="flex items-center justify-between bg-slate-700 p-4 rounded-xl">
+                <div>
+                  <p className="text-white font-medium">Tips included?</p>
+                  <p className="text-slate-400 text-sm">{tipsIncluded ? "Worker keeps tips (lower base rate)" : "Flat hourly rate, no tips"}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTipsIncluded(!tipsIncluded)}
+                  className={`w-14 h-8 rounded-full transition-all ${tipsIncluded ? 'bg-green-500' : 'bg-slate-600'}`}
+                >
+                  <div className={`w-6 h-6 bg-white rounded-full shadow transition-all ${tipsIncluded ? 'ml-7' : 'ml-1'}`} />
+                </button>
               </div>
 
               <div>
@@ -858,6 +893,133 @@
                 className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
               >
                 {loading ? 'Posting...' : 'Post Shift'}
+              </button>
+            </form>
+          </main>
+        </div>
+      );
+    }
+
+    // Business Settings Component
+    function BusinessSettings({ user, onBack, onSave }) {
+      const [businessName, setBusinessName] = useState(user.business_name || '');
+      const [address, setAddress] = useState(user.address || '');
+      const [phone, setPhone] = useState(user.phone || '');
+      const [posSystem, setPosSystem] = useState(user.pos_system || '');
+      const [menuNotes, setMenuNotes] = useState(user.menu_notes || '');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [success, setSuccess] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        setSuccess('');
+
+        const { data, error: updateError } = await supabase
+          .from('businesses')
+          .update({
+            business_name: businessName,
+            address,
+            phone,
+            pos_system: posSystem,
+            menu_notes: menuNotes
+          })
+          .eq('id', user.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          setError(updateError.message);
+          setLoading(false);
+          return;
+        }
+
+        setSuccess('Settings saved!');
+        setLoading(false);
+        setTimeout(() => onSave(data), 1000);
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-900">
+          <header className="bg-slate-800 border-b border-slate-700 p-4">
+            <div className="max-w-4xl mx-auto flex items-center gap-4">
+              <button onClick={onBack} className="text-slate-400 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h1 className="text-xl font-bold text-white">Business Settings</h1>
+            </div>
+          </header>
+
+          <main className="max-w-lg mx-auto p-4">
+            <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-6 space-y-4">
+              {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
+              {success && <div className="bg-green-500/20 text-green-300 p-3 rounded-lg text-sm">{success}</div>}
+
+              <div>
+                <label className="text-slate-300 text-sm">Business Name</label>
+                <input
+                  type="text"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Address</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="123 Main St, City, State"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Phone</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">POS System</label>
+                <select
+                  value={posSystem}
+                  onChange={(e) => setPosSystem(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                >
+                  <option value="">Select POS System</option>
+                  {POS_SYSTEMS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Menu Notes</label>
+                <textarea
+                  value={menuNotes}
+                  onChange={(e) => setMenuNotes(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  rows={3}
+                  placeholder="Describe your menu, signature items, etc."
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
               </button>
             </form>
           </main>
@@ -1021,11 +1183,13 @@
     }
 
     // Worker Dashboard
-    function WorkerDashboard({ user, onLogout }) {
+    function WorkerDashboard({ user: initialUser, onLogout }) {
+      const [user, setUser] = useState(initialUser);
       const [shifts, setShifts] = useState([]);
       const [myInterests, setMyInterests] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [available, setAvailable] = useState(user.available);
+      const [available, setAvailable] = useState(initialUser.available);
+      const [showSettings, setShowSettings] = useState(false);
 
       useEffect(() => {
         loadData();
@@ -1067,6 +1231,11 @@
         setLoading(false);
       };
 
+      const updateUser = (updatedUser) => {
+        setUser(updatedUser);
+        localStorage.setItem('lastcall_user', JSON.stringify(updatedUser));
+      };
+
       const toggleAvailable = async () => {
         const newAvailable = !available;
         setAvailable(newAvailable);
@@ -1106,6 +1275,10 @@
         return `${hour12}:${m} ${ampm}`;
       };
 
+      if (showSettings) {
+        return <WorkerSettings user={user} onBack={() => setShowSettings(false)} onSave={(updated) => { updateUser(updated); setShowSettings(false); loadData(); }} />;
+      }
+
       return (
         <div className="min-h-screen bg-slate-900">
           <header className="bg-slate-800 border-b border-slate-700 p-4">
@@ -1117,7 +1290,15 @@
                   <p className="text-slate-400 text-sm">{user.positions?.join(', ')}</p>
                 </div>
               </div>
-              <button onClick={onLogout} className="text-slate-400 hover:text-white text-sm">Log out</button>
+              <div className="flex items-center gap-4">
+                <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+                <button onClick={onLogout} className="text-slate-400 hover:text-white text-sm">Log out</button>
+              </div>
             </div>
           </header>
 
@@ -1168,7 +1349,9 @@
                           <div className="mt-2 flex items-center gap-4 text-sm">
                             <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
                             <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
-                            <span className="text-green-400 font-semibold">${shift.hourly_rate}/hr</span>
+                            <span className="text-green-400 font-semibold">
+                              ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
+                            </span>
                           </div>
                           {shift.notes && <p className="text-slate-500 text-sm mt-2">{shift.notes}</p>}
                           {shift.business?.menu_notes && (
@@ -1214,6 +1397,187 @@
       );
     }
 
+    // Worker Settings Component
+    function WorkerSettings({ user, onBack, onSave }) {
+      const [fullName, setFullName] = useState(user.full_name || '');
+      const [phone, setPhone] = useState(user.phone || '');
+      const [yearsExperience, setYearsExperience] = useState(user.years_experience || '');
+      const [selectedPOS, setSelectedPOS] = useState(user.pos_systems || []);
+      const [selectedPositions, setSelectedPositions] = useState(user.positions || []);
+      const [selectedCerts, setSelectedCerts] = useState(user.certifications || []);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [success, setSuccess] = useState('');
+
+      const toggleSelection = (item, selected, setSelected) => {
+        if (selected.includes(item)) {
+          setSelected(selected.filter(i => i !== item));
+        } else {
+          setSelected([...selected, item]);
+        }
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        setSuccess('');
+
+        if (selectedPositions.length === 0) {
+          setError('Please select at least one position');
+          setLoading(false);
+          return;
+        }
+
+        const { data, error: updateError } = await supabase
+          .from('workers')
+          .update({
+            full_name: fullName,
+            phone,
+            years_experience: parseInt(yearsExperience) || 0,
+            pos_systems: selectedPOS,
+            positions: selectedPositions,
+            certifications: selectedCerts
+          })
+          .eq('id', user.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          setError(updateError.message);
+          setLoading(false);
+          return;
+        }
+
+        setSuccess('Profile saved!');
+        setLoading(false);
+        setTimeout(() => onSave(data), 1000);
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-900 overflow-y-auto">
+          <header className="bg-slate-800 border-b border-slate-700 p-4">
+            <div className="max-w-4xl mx-auto flex items-center gap-4">
+              <button onClick={onBack} className="text-slate-400 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h1 className="text-xl font-bold text-white">Edit Profile</h1>
+            </div>
+          </header>
+
+          <main className="max-w-lg mx-auto p-4 pb-12">
+            <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-6 space-y-4">
+              {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
+              {success && <div className="bg-green-500/20 text-green-300 p-3 rounded-lg text-sm">{success}</div>}
+
+              <div>
+                <label className="text-slate-300 text-sm">Full Name</label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Phone</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Years of Experience</label>
+                <input
+                  type="number"
+                  value={yearsExperience}
+                  onChange={(e) => setYearsExperience(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  min="0"
+                  max="50"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm mb-2 block">Positions (select all that apply)</label>
+                <div className="flex flex-wrap gap-2">
+                  {POSITIONS.map(pos => (
+                    <button
+                      key={pos}
+                      type="button"
+                      onClick={() => toggleSelection(pos, selectedPositions, setSelectedPositions)}
+                      className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                        selectedPositions.includes(pos)
+                          ? 'bg-brand-500 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      {pos}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm mb-2 block">POS Systems You Know</label>
+                <div className="flex flex-wrap gap-2">
+                  {POS_SYSTEMS.map(pos => (
+                    <button
+                      key={pos}
+                      type="button"
+                      onClick={() => toggleSelection(pos, selectedPOS, setSelectedPOS)}
+                      className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                        selectedPOS.includes(pos)
+                          ? 'bg-green-500 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      {pos}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm mb-2 block">Certifications</label>
+                <div className="flex flex-wrap gap-2">
+                  {CERTIFICATIONS.map(cert => (
+                    <button
+                      key={cert}
+                      type="button"
+                      onClick={() => toggleSelection(cert, selectedCerts, setSelectedCerts)}
+                      className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                        selectedCerts.includes(cert)
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      {cert}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </form>
+          </main>
+        </div>
+      );
+    }
+
     // Shift Card Component
     function ShiftCard({ shift, onClick, showStatus }) {
       const formatDate = (date) => new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -1247,7 +1611,9 @@
               <div className="mt-2 flex items-center gap-4 text-sm">
                 <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
                 <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
-                <span className="text-green-400 font-semibold">${shift.hourly_rate}/hr</span>
+                <span className="text-green-400 font-semibold">
+                  ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
+                </span>
               </div>
             </div>
             <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
