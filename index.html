@@ -1189,16 +1189,26 @@
 
       const deleteShift = async () => {
         // Delete all interests first
-        await supabase
+        const { error: interestError } = await supabase
           .from('interests')
           .delete()
           .eq('shift_id', shift.id);
         
+        if (interestError) {
+          console.error('Error deleting interests:', interestError);
+        }
+        
         // Delete the shift
-        await supabase
+        const { error: shiftError } = await supabase
           .from('shifts')
           .delete()
           .eq('id', shift.id);
+        
+        if (shiftError) {
+          console.error('Error deleting shift:', shiftError);
+          alert('Error deleting shift: ' + shiftError.message);
+          return;
+        }
         
         onBack();
       };
