@@ -1568,6 +1568,13 @@
       const toggleAvailable = async () => {
         const newAvailable = !available;
         setAvailable(newAvailable);
+        
+        // Update localStorage
+        const updatedUser = { ...user, available: newAvailable };
+        setUser(updatedUser);
+        localStorage.setItem('lastcall_user', JSON.stringify(updatedUser));
+        
+        // Update database
         await supabase
           .from('workers')
           .update({ available: newAvailable })
