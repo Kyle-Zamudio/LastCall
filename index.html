@@ -654,23 +654,29 @@
       }, []);
 
       const loadShifts = async () => {
-        // Load upcoming shifts (today and future)
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
+
+        // Helper to check if shift has ended
+        const shiftHasEnded = (shift) => {
+          if (shift.shift_date < today) return true;
+          if (shift.shift_date === today && shift.end_time <= currentTime) return true;
+          return false;
+        };
+
+        // Load all shifts for this business
         const { data } = await supabase
           .from('shifts')
           .select('*')
           .eq('business_id', user.id)
-          .gte('shift_date', new Date().toISOString().split('T')[0])
           .order('shift_date', { ascending: true });
-        setShifts(data || []);
-
-        // Load past shifts
-        const { data: pastData } = await supabase
-          .from('shifts')
-          .select('*')
-          .eq('business_id', user.id)
-          .lt('shift_date', new Date().toISOString().split('T')[0])
-          .order('shift_date', { ascending: false });
-        setPastShifts(pastData || []);
+        
+        const upcoming = (data || []).filter(shift => !shiftHasEnded(shift));
+        const past = (data || []).filter(shift => shiftHasEnded(shift)).reverse();
+        
+        setShifts(upcoming);
+        setPastShifts(past);
 
         setLoading(false);
       };
@@ -1256,7 +1262,7 @@
       const [myInterests, setMyInterests] = useState([]);
       const [myAcceptedShifts, setMyAcceptedShifts] = useState([]);
       const [myPastShifts, setMyPastShifts] = useState([]);
-      const [shiftTab, setShiftTab] = useState('upcoming');
+      const [shiftTab, setShiftTab] = useState('available');
       const [loading, setLoading] = useState(true);
       const [available, setAvailable] = useState(initialUser.available);
       const [showSettings, setShowSettings] = useState(false);
@@ -1266,6 +1272,17 @@
       }, []);
 
       const loadData = async () => {
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
+
+        // Helper to check if shift has ended
+        const shiftHasEnded = (shift) => {
+          if (shift.shift_date < today) return true;
+          if (shift.shift_date === today && shift.end_time <= currentTime) return true;
+          return false;
+        };
+
         // Load open shifts
         const { data: shiftsData } = await supabase
           .from('shifts')
@@ -1274,12 +1291,12 @@
             business:businesses(*)
           `)
           .eq('status', 'open')
-          .gte('shift_date', new Date().toISOString().split('T')[0])
+          .gte('shift_date', today)
           .order('shift_date', { ascending: true });
 
-        // Filter to positions user works
+        // Filter to positions user works and shifts that haven't ended
         const filtered = (shiftsData || []).filter(shift => 
-          user.positions?.includes(shift.position)
+          user.positions?.includes(shift.position) && !shiftHasEnded(shift)
         );
 
         // Sort by POS match
@@ -1299,32 +1316,21 @@
         
         setMyInterests(interestsData || []);
 
-        // Load my accepted shifts (upcoming)
-        const { data: acceptedData } = await supabase
+        // Load ALL my filled shifts, then split into upcoming vs past
+        const { data: myShiftsData } = await supabase
           .from('shifts')
           .select(`
             *,
             business:businesses(*)
           `)
           .eq('filled_by', user.id)
-          .eq('status', 'filled')
-          .gte('shift_date', new Date().toISOString().split('T')[0])
           .order('shift_date', { ascending: true });
         
-        setMyAcceptedShifts(acceptedData || []);
-
-        // Load my past shifts
-        const { data: pastData } = await supabase
-          .from('shifts')
-          .select(`
-            *,
-            business:businesses(*)
-          `)
-          .eq('filled_by', user.id)
-          .lt('shift_date', new Date().toISOString().split('T')[0])
-          .order('shift_date', { ascending: false });
+        const upcoming = (myShiftsData || []).filter(shift => !shiftHasEnded(shift));
+        const past = (myShiftsData || []).filter(shift => shiftHasEnded(shift)).reverse();
         
-        setMyPastShifts(pastData || []);
+        setMyAcceptedShifts(upcoming);
+        setMyPastShifts(past);
 
         setLoading(false);
       };
@@ -1414,124 +1420,54 @@
               </button>
             </div>
 
-            {/* My Accepted Shifts */}
-            {(myAcceptedShifts.length > 0 || myPastShifts.length > 0) && (
-              <div className="mb-8">
-                <div className="flex items-center gap-4 mb-4">
-                  <h2 className="text-xl font-bold text-white">✓ My Shifts</h2>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShiftTab('upcoming')}
-                      className={`px-3 py-1 rounded-lg text-sm transition-all ${
-                        shiftTab === 'upcoming' ? 'bg-green-500 text-white' : 'bg-slate-700 text-slate-300'
-                      }`}
-                    >
-                      Upcoming ({myAcceptedShifts.length})
-                    </button>
-                    <button
-                      onClick={() => setShiftTab('past')}
-                      className={`px-3 py-1 rounded-lg text-sm transition-all ${
-                        shiftTab === 'past' ? 'bg-slate-500 text-white' : 'bg-slate-700 text-slate-300'
-                      }`}
-                    >
-                      Past ({myPastShifts.length})
-                    </button>
-                  </div>
-                </div>
-                
-                {shiftTab === 'upcoming' && myAcceptedShifts.length === 0 && (
-                  <div className="bg-slate-800 rounded-2xl p-6 text-center">
-                    <p className="text-slate-400">No upcoming shifts</p>
-                  </div>
-                )}
-                
-                {shiftTab === 'upcoming' && (
-                  <div className="space-y-4">
-                    {myAcceptedShifts.map(shift => (
-                      <div key={shift.id} className="bg-green-900/30 border border-green-500/50 rounded-2xl p-4">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-white font-semibold">{shift.position}</h3>
-                          <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Confirmed</span>
-                        </div>
-                        <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
-                        <p className="text-slate-400 text-sm">{shift.business?.address}</p>
-                        <div className="mt-2 flex items-center gap-4 text-sm">
-                          <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
-                          <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
-                          <span className="text-green-400 font-semibold">
-                            ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
-                          </span>
-                        </div>
-                        {shift.business?.phone && (
-                          <p className="text-slate-400 text-sm mt-2">📞 Contact: {shift.business.phone}</p>
-                        )}
-                        {shift.business?.menu_notes && (
-                          <details className="mt-2">
-                            <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
-                            <p className="text-slate-500 text-sm mt-1 pl-4">{shift.business.menu_notes}</p>
-                          </details>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {shiftTab === 'past' && myPastShifts.length === 0 && (
-                  <div className="bg-slate-800 rounded-2xl p-6 text-center">
-                    <p className="text-slate-400">No past shifts yet</p>
-                  </div>
-                )}
-
-                {shiftTab === 'past' && (
-                  <div className="space-y-4">
-                    {myPastShifts.map(shift => (
-                      <div key={shift.id} className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 opacity-75">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-white font-semibold">{shift.position}</h3>
-                          <span className="bg-slate-600 text-slate-300 text-xs px-2 py-1 rounded-full">Completed</span>
-                        </div>
-                        <p className="text-slate-400 font-semibold">{shift.business?.business_name}</p>
-                        <div className="mt-2 flex items-center gap-4 text-sm">
-                          <span className="text-slate-400">📅 {formatDate(shift.shift_date)}</span>
-                          <span className="text-slate-400">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
-                          <span className="text-slate-400">
-                            ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {/* Shifts Tabs */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <button
+                  onClick={() => setShiftTab('upcoming')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    shiftTab === 'upcoming' ? 'bg-green-500 text-white' : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  Upcoming ({myAcceptedShifts.length})
+                </button>
+                <button
+                  onClick={() => setShiftTab('available')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    shiftTab === 'available' ? 'bg-brand-500 text-white' : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  Available ({shifts.length})
+                </button>
+                <button
+                  onClick={() => setShiftTab('past')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    shiftTab === 'past' ? 'bg-slate-500 text-white' : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  Past ({myPastShifts.length})
+                </button>
               </div>
-            )}
-
-            <h2 className="text-xl font-bold text-white mb-4">Available Shifts</h2>
+            </div>
 
             {loading ? (
               <div className="text-slate-400 text-center py-12">Loading...</div>
-            ) : shifts.length === 0 ? (
-              <div className="bg-slate-800 rounded-2xl p-8 text-center">
-                <p className="text-slate-400">No shifts available right now</p>
-                <p className="text-slate-500 text-sm mt-2">Check back soon!</p>
-              </div>
             ) : (
-              <div className="space-y-4">
-                {shifts.map(shift => {
-                  const posMatch = shift.business?.pos_system && user.pos_systems?.includes(shift.business.pos_system);
-                  const interestStatus = getInterestStatus(shift.id);
-                  const hasInterest = myInterests.some(i => i.shift_id === shift.id);
-
-                  return (
-                    <div key={shift.id} className={`bg-slate-800 rounded-2xl p-4 ${posMatch ? 'ring-2 ring-green-500/50' : ''}`}>
-                      <div className="flex items-start justify-between">
-                        <div>
+              <>
+                {/* Upcoming Tab */}
+                {shiftTab === 'upcoming' && (
+                  myAcceptedShifts.length === 0 ? (
+                    <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                      <p className="text-slate-400">No upcoming shifts</p>
+                      <p className="text-slate-500 text-sm mt-2">Check the Available tab to find shifts!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {myAcceptedShifts.map(shift => (
+                        <div key={shift.id} className="bg-green-900/30 border border-green-500/50 rounded-2xl p-4">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="text-white font-semibold">{shift.position}</h3>
-                            {posMatch && (
-                              <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
-                                You know {shift.business.pos_system}!
-                              </span>
-                            )}
+                            <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Confirmed</span>
                           </div>
                           <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
                           <p className="text-slate-400 text-sm">{shift.business?.address}</p>
@@ -1542,7 +1478,9 @@
                               ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
                             </span>
                           </div>
-                          {shift.notes && <p className="text-slate-500 text-sm mt-2">{shift.notes}</p>}
+                          {shift.business?.phone && (
+                            <p className="text-slate-400 text-sm mt-2">📞 Contact: {shift.business.phone}</p>
+                          )}
                           {shift.business?.menu_notes && (
                             <details className="mt-2">
                               <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
@@ -1550,36 +1488,115 @@
                             </details>
                           )}
                         </div>
-                        <div>
-                          {interestStatus === 'accepted' ? (
-                            <span className="bg-green-500 text-white px-4 py-2 rounded-xl font-semibold">
-                              ✓ You got it!
-                            </span>
-                          ) : interestStatus === 'rejected' ? (
-                            <span className="bg-slate-600 text-slate-400 px-4 py-2 rounded-xl">
-                              Not selected
-                            </span>
-                          ) : hasInterest ? (
-                            <button
-                              onClick={() => withdrawInterest(shift.id)}
-                              className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded-xl font-semibold"
-                            >
-                              Withdraw
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => expressInterest(shift.id)}
-                              className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold"
-                            >
-                              I'm Interested
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
+                  )
+                )}
+
+                {/* Available Tab */}
+                {shiftTab === 'available' && (
+                  shifts.length === 0 ? (
+                    <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                      <p className="text-slate-400">No shifts available right now</p>
+                      <p className="text-slate-500 text-sm mt-2">Check back soon!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {shifts.map(shift => {
+                        const posMatch = shift.business?.pos_system && user.pos_systems?.includes(shift.business.pos_system);
+                        const interestStatus = getInterestStatus(shift.id);
+                        const hasInterest = myInterests.some(i => i.shift_id === shift.id);
+
+                        return (
+                          <div key={shift.id} className={`bg-slate-800 rounded-2xl p-4 ${posMatch ? 'ring-2 ring-green-500/50' : ''}`}>
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="text-white font-semibold">{shift.position}</h3>
+                                  {posMatch && (
+                                    <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
+                                      You know {shift.business.pos_system}!
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
+                                <p className="text-slate-400 text-sm">{shift.business?.address}</p>
+                                <div className="mt-2 flex items-center gap-4 text-sm">
+                                  <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
+                                  <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
+                                  <span className="text-green-400 font-semibold">
+                                    ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
+                                  </span>
+                                </div>
+                                {shift.notes && <p className="text-slate-500 text-sm mt-2">{shift.notes}</p>}
+                                {shift.business?.menu_notes && (
+                                  <details className="mt-2">
+                                    <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
+                                    <p className="text-slate-500 text-sm mt-1 pl-4">{shift.business.menu_notes}</p>
+                                  </details>
+                                )}
+                              </div>
+                              <div>
+                                {interestStatus === 'accepted' ? (
+                                  <span className="bg-green-500 text-white px-4 py-2 rounded-xl font-semibold">
+                                    ✓ You got it!
+                                  </span>
+                                ) : interestStatus === 'rejected' ? (
+                                  <span className="bg-slate-600 text-slate-400 px-4 py-2 rounded-xl">
+                                    Not selected
+                                  </span>
+                                ) : hasInterest ? (
+                                  <button
+                                    onClick={() => withdrawInterest(shift.id)}
+                                    className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded-xl font-semibold"
+                                  >
+                                    Withdraw
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => expressInterest(shift.id)}
+                                    className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold"
+                                  >
+                                    I'm Interested
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {/* Past Tab */}
+                {shiftTab === 'past' && (
+                  myPastShifts.length === 0 ? (
+                    <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                      <p className="text-slate-400">No past shifts yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {myPastShifts.map(shift => (
+                        <div key={shift.id} className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 opacity-75">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-white font-semibold">{shift.position}</h3>
+                            <span className="bg-slate-600 text-slate-300 text-xs px-2 py-1 rounded-full">Completed</span>
+                          </div>
+                          <p className="text-slate-400 font-semibold">{shift.business?.business_name}</p>
+                          <div className="mt-2 flex items-center gap-4 text-sm">
+                            <span className="text-slate-400">📅 {formatDate(shift.shift_date)}</span>
+                            <span className="text-slate-400">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
+                            <span className="text-slate-400">
+                              ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </>
             )}
           </main>
         </div>
