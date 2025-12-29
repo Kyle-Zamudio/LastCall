@@ -642,6 +642,8 @@
     function BusinessDashboard({ user: initialUser, onLogout }) {
       const [user, setUser] = useState(initialUser);
       const [shifts, setShifts] = useState([]);
+      const [pastShifts, setPastShifts] = useState([]);
+      const [shiftTab, setShiftTab] = useState('upcoming');
       const [showPostShift, setShowPostShift] = useState(false);
       const [showSettings, setShowSettings] = useState(false);
       const [selectedShift, setSelectedShift] = useState(null);
@@ -652,12 +654,24 @@
       }, []);
 
       const loadShifts = async () => {
+        // Load upcoming shifts (today and future)
         const { data } = await supabase
           .from('shifts')
           .select('*')
           .eq('business_id', user.id)
+          .gte('shift_date', new Date().toISOString().split('T')[0])
           .order('shift_date', { ascending: true });
         setShifts(data || []);
+
+        // Load past shifts
+        const { data: pastData } = await supabase
+          .from('shifts')
+          .select('*')
+          .eq('business_id', user.id)
+          .lt('shift_date', new Date().toISOString().split('T')[0])
+          .order('shift_date', { ascending: false });
+        setPastShifts(pastData || []);
+
         setLoading(false);
       };
 
@@ -703,7 +717,27 @@
 
           <main className="max-w-4xl mx-auto p-4">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">Your Shifts</h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-bold text-white">Your Shifts</h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShiftTab('upcoming')}
+                    className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                      shiftTab === 'upcoming' ? 'bg-brand-500 text-white' : 'bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    Upcoming ({shifts.length})
+                  </button>
+                  <button
+                    onClick={() => setShiftTab('past')}
+                    className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                      shiftTab === 'past' ? 'bg-slate-500 text-white' : 'bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    Past ({pastShifts.length})
+                  </button>
+                </div>
+              </div>
               <button
                 onClick={() => setShowPostShift(true)}
                 className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center gap-2"
@@ -717,27 +751,60 @@
 
             {loading ? (
               <div className="text-slate-400 text-center py-12">Loading...</div>
-            ) : shifts.length === 0 ? (
-              <div className="bg-slate-800 rounded-2xl p-8 text-center">
-                <p className="text-slate-400 mb-4">No shifts posted yet</p>
-                <button
-                  onClick={() => setShowPostShift(true)}
-                  className="text-brand-400 hover:text-brand-300"
-                >
-                  Post your first shift →
-                </button>
-              </div>
+            ) : shiftTab === 'upcoming' ? (
+              shifts.length === 0 ? (
+                <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                  <p className="text-slate-400 mb-4">No upcoming shifts</p>
+                  <button
+                    onClick={() => setShowPostShift(true)}
+                    className="text-brand-400 hover:text-brand-300"
+                  >
+                    Post your first shift →
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {shifts.map(shift => (
+                    <ShiftCard 
+                      key={shift.id} 
+                      shift={shift} 
+                      onClick={() => setSelectedShift(shift)}
+                      showStatus
+                    />
+                  ))}
+                </div>
+              )
             ) : (
-              <div className="space-y-4">
-                {shifts.map(shift => (
-                  <ShiftCard 
-                    key={shift.id} 
-                    shift={shift} 
-                    onClick={() => setSelectedShift(shift)}
-                    showStatus
-                  />
-                ))}
-              </div>
+              pastShifts.length === 0 ? (
+                <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                  <p className="text-slate-400">No past shifts yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {pastShifts.map(shift => (
+                    <div key={shift.id} className="bg-slate-800/50 rounded-2xl p-4 opacity-75">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-white font-semibold">{shift.position}</h3>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              shift.status === 'filled' ? 'bg-green-500/20 text-green-400' :
+                              shift.status === 'cancelled' ? 'bg-red-500/20 text-red-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {shift.status}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center gap-4 text-sm">
+                            <span className="text-slate-400">📅 {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                            <span className="text-slate-400">${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             )}
           </main>
         </div>
@@ -1188,6 +1255,8 @@
       const [shifts, setShifts] = useState([]);
       const [myInterests, setMyInterests] = useState([]);
       const [myAcceptedShifts, setMyAcceptedShifts] = useState([]);
+      const [myPastShifts, setMyPastShifts] = useState([]);
+      const [shiftTab, setShiftTab] = useState('upcoming');
       const [loading, setLoading] = useState(true);
       const [available, setAvailable] = useState(initialUser.available);
       const [showSettings, setShowSettings] = useState(false);
@@ -1230,7 +1299,7 @@
         
         setMyInterests(interestsData || []);
 
-        // Load my accepted shifts
+        // Load my accepted shifts (upcoming)
         const { data: acceptedData } = await supabase
           .from('shifts')
           .select(`
@@ -1243,6 +1312,19 @@
           .order('shift_date', { ascending: true });
         
         setMyAcceptedShifts(acceptedData || []);
+
+        // Load my past shifts
+        const { data: pastData } = await supabase
+          .from('shifts')
+          .select(`
+            *,
+            business:businesses(*)
+          `)
+          .eq('filled_by', user.id)
+          .lt('shift_date', new Date().toISOString().split('T')[0])
+          .order('shift_date', { ascending: false });
+        
+        setMyPastShifts(pastData || []);
 
         setLoading(false);
       };
@@ -1333,37 +1415,93 @@
             </div>
 
             {/* My Accepted Shifts */}
-            {myAcceptedShifts.length > 0 && (
+            {(myAcceptedShifts.length > 0 || myPastShifts.length > 0) && (
               <div className="mb-8">
-                <h2 className="text-xl font-bold text-white mb-4">✓ My Shifts</h2>
-                <div className="space-y-4">
-                  {myAcceptedShifts.map(shift => (
-                    <div key={shift.id} className="bg-green-900/30 border border-green-500/50 rounded-2xl p-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-white font-semibold">{shift.position}</h3>
-                        <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Confirmed</span>
-                      </div>
-                      <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
-                      <p className="text-slate-400 text-sm">{shift.business?.address}</p>
-                      <div className="mt-2 flex items-center gap-4 text-sm">
-                        <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
-                        <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
-                        <span className="text-green-400 font-semibold">
-                          ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
-                        </span>
-                      </div>
-                      {shift.business?.phone && (
-                        <p className="text-slate-400 text-sm mt-2">📞 Contact: {shift.business.phone}</p>
-                      )}
-                      {shift.business?.menu_notes && (
-                        <details className="mt-2">
-                          <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
-                          <p className="text-slate-500 text-sm mt-1 pl-4">{shift.business.menu_notes}</p>
-                        </details>
-                      )}
-                    </div>
-                  ))}
+                <div className="flex items-center gap-4 mb-4">
+                  <h2 className="text-xl font-bold text-white">✓ My Shifts</h2>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShiftTab('upcoming')}
+                      className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                        shiftTab === 'upcoming' ? 'bg-green-500 text-white' : 'bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      Upcoming ({myAcceptedShifts.length})
+                    </button>
+                    <button
+                      onClick={() => setShiftTab('past')}
+                      className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                        shiftTab === 'past' ? 'bg-slate-500 text-white' : 'bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      Past ({myPastShifts.length})
+                    </button>
+                  </div>
                 </div>
+                
+                {shiftTab === 'upcoming' && myAcceptedShifts.length === 0 && (
+                  <div className="bg-slate-800 rounded-2xl p-6 text-center">
+                    <p className="text-slate-400">No upcoming shifts</p>
+                  </div>
+                )}
+                
+                {shiftTab === 'upcoming' && (
+                  <div className="space-y-4">
+                    {myAcceptedShifts.map(shift => (
+                      <div key={shift.id} className="bg-green-900/30 border border-green-500/50 rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-white font-semibold">{shift.position}</h3>
+                          <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Confirmed</span>
+                        </div>
+                        <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
+                        <p className="text-slate-400 text-sm">{shift.business?.address}</p>
+                        <div className="mt-2 flex items-center gap-4 text-sm">
+                          <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
+                          <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
+                          <span className="text-green-400 font-semibold">
+                            ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
+                          </span>
+                        </div>
+                        {shift.business?.phone && (
+                          <p className="text-slate-400 text-sm mt-2">📞 Contact: {shift.business.phone}</p>
+                        )}
+                        {shift.business?.menu_notes && (
+                          <details className="mt-2">
+                            <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
+                            <p className="text-slate-500 text-sm mt-1 pl-4">{shift.business.menu_notes}</p>
+                          </details>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {shiftTab === 'past' && myPastShifts.length === 0 && (
+                  <div className="bg-slate-800 rounded-2xl p-6 text-center">
+                    <p className="text-slate-400">No past shifts yet</p>
+                  </div>
+                )}
+
+                {shiftTab === 'past' && (
+                  <div className="space-y-4">
+                    {myPastShifts.map(shift => (
+                      <div key={shift.id} className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 opacity-75">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-white font-semibold">{shift.position}</h3>
+                          <span className="bg-slate-600 text-slate-300 text-xs px-2 py-1 rounded-full">Completed</span>
+                        </div>
+                        <p className="text-slate-400 font-semibold">{shift.business?.business_name}</p>
+                        <div className="mt-2 flex items-center gap-4 text-sm">
+                          <span className="text-slate-400">📅 {formatDate(shift.shift_date)}</span>
+                          <span className="text-slate-400">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
+                          <span className="text-slate-400">
+                            ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
