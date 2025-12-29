@@ -2,150 +2,99 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LastCall - Shift Coverage in Minutes</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📞</text></svg>">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            brand: {
-              50: '#fdf4f3',
-              100: '#fce8e6',
-              200: '#f9d4d1',
-              300: '#f4b4ae',
-              400: '#ec8b82',
-              500: '#e05a4d',
-              600: '#cc4134',
-              700: '#ab3429',
-              800: '#8d2e26',
-              900: '#762c25',
-            }
+            brand: { 400: '#f87171', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c', 800: '#991b1b', 900: '#7f1d1d' }
           }
         }
       }
     }
   </script>
   <style>
-    * { -webkit-tap-highlight-color: transparent; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    .glass { backdrop-filter: blur(12px); background: rgba(255,255,255,0.1); }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState } = React;
+    const { useState, useEffect } = React;
+    
+    // Supabase client
+    const SUPABASE_URL = 'https://thugeejicutetunygyta.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ARuFmAVCUaET9c06-61EoA_wf_r7K01';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    
+    // Simple hash function for passwords (in production, use proper auth)
+    const hashPassword = async (password) => {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    };
 
-    const LastCallApp = () => {
-      const [userType, setUserType] = useState(null);
-      const [currentView, setCurrentView] = useState('dashboard');
-      const [selectedWorker, setSelectedWorker] = useState(null);
-      const [shiftPosted, setShiftPosted] = useState(false);
-      const [workerAvailable, setWorkerAvailable] = useState(true);
-      const [showConfirmation, setShowConfirmation] = useState(false);
-      const [interestedShifts, setInterestedShifts] = useState([]);
+    // POS Systems list
+    const POS_SYSTEMS = ['Toast', 'Square', 'Aloha', 'Micros', 'TouchBistro', 'Clover', 'Revel', 'Lightspeed', 'SpotOn', 'Other'];
+    const POSITIONS = ['Bartender', 'Server', 'Cook', 'Dishwasher', 'Host', 'Barback'];
+    const CERTIFICATIONS = ['TIPS', 'ServSafe', 'Food Handlers Card', 'ABC License', 'None'];
 
-      const availableWorkers = [
-        {
-          id: 1,
-          name: "Marcus Johnson",
-          photo: "👨‍🍳",
-          distance: "0.8 mi",
-          responseTime: "2 min ago",
-          rating: 4.9,
-          totalShifts: 127,
-          experience: [
-            { role: "Bartender", years: 5, current: false, place: "The Rusty Nail", location: "Arlington, VA" },
-            { role: "Bartender", years: 2, current: false, place: "Blackfinn Ameripub", location: "Ashburn, VA" },
-          ],
-          certifications: ["TIPS Certified", "ServSafe", "ABC License"],
-          skills: ["Craft Cocktails", "High Volume", "POS: Toast & Square"],
-          availability: "Evenings & Weekends",
-          verified: true,
-        },
-        {
-          id: 2,
-          name: "Ashley Rodriguez",
-          photo: "👩",
-          distance: "1.2 mi",
-          responseTime: "5 min ago",
-          rating: 4.7,
-          totalShifts: 84,
-          experience: [
-            { role: "Bartender", years: 3, current: true, place: "Coastal Kitchen", location: "Leesburg, VA" },
-            { role: "Server", years: 2, current: false, place: "Clyde's", location: "Reston, VA" },
-          ],
-          certifications: ["TIPS Certified", "Wine Level 1"],
-          skills: ["Wine Service", "Fine Dining", "Events"],
-          availability: "Flexible",
-          verified: true,
-        },
-        {
-          id: 3,
-          name: "Derek Mitchell",
-          photo: "🧔",
-          distance: "2.1 mi",
-          responseTime: "8 min ago",
-          rating: 4.8,
-          totalShifts: 203,
-          experience: [
-            { role: "Head Bartender", years: 4, current: false, place: "Magnolia's", location: "Purcellville, VA" },
-            { role: "Bartender", years: 3, current: false, place: "World of Beer", location: "Fairfax, VA" },
-          ],
-          certifications: ["TIPS Certified", "ServSafe Manager", "Cicerone Level 1"],
-          skills: ["Craft Beer", "Speed Bar", "Inventory Management", "Training"],
-          availability: "Weekends Only",
-          verified: true,
-        },
-        {
-          id: 4,
-          name: "Jen Nguyen",
-          photo: "👩‍🦰",
-          distance: "0.5 mi",
-          responseTime: "Just now",
-          rating: 4.6,
-          totalShifts: 45,
-          experience: [
-            { role: "Bartender", years: 1, current: true, place: "Local Pour", location: "Sterling, VA" },
-            { role: "Barback", years: 1, current: false, place: "Iron Horse Tap", location: "Ashburn, VA" },
-          ],
-          certifications: ["TIPS Certified"],
-          skills: ["Craft Cocktails", "Customer Service", "Social Media"],
-          availability: "Evenings",
-          verified: true,
-        },
-      ];
+    // Logo Component
+    const Logo = ({ size = "default" }) => {
+      const sizes = {
+        small: { box: "w-10 h-10", icon: "w-5 h-5" },
+        default: { box: "w-16 h-16", icon: "w-8 h-8" },
+        large: { box: "w-20 h-20", icon: "w-10 h-10" }
+      };
+      return (
+        <div className={`${sizes[size].box} bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/30`}>
+          <svg className={`${sizes[size].icon} text-white`} fill="currentColor" viewBox="0 0 24 24">
+            <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+          </svg>
+        </div>
+      );
+    };
 
-      const availableShifts = [
-        { id: 1, business: "The Rusty Nail", address: "123 Main St, Leesburg", position: "Bartender", date: "Tonight", time: "6PM - 2AM", pay: "$200 + tips", distance: "0.8 mi", urgent: true, posted: "5 min ago" },
-        { id: 2, business: "Coastal Kitchen", address: "456 Market St, Ashburn", position: "Server", date: "Tomorrow", time: "11AM - 4PM", pay: "$150 + tips", distance: "1.2 mi", urgent: false, posted: "1 hr ago" },
-        { id: 3, business: "The Whiskey Room", address: "789 Oak Ave, Sterling", position: "Barback", date: "Saturday", time: "8PM - 3AM", pay: "$160 + tips", distance: "0.5 mi", urgent: true, posted: "15 min ago" },
-      ];
+    // Main App
+    function App() {
+      const [view, setView] = useState('landing'); // landing, business-auth, worker-auth, business-dashboard, worker-dashboard
+      const [authMode, setAuthMode] = useState('login'); // login, signup
+      const [user, setUser] = useState(null); // Current logged in user
+      const [userType, setUserType] = useState(null); // 'business' or 'worker'
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [success, setSuccess] = useState('');
 
-      // Logo Component
-      const Logo = ({ size = "default" }) => {
-        const sizes = {
-          small: { box: "w-10 h-10", text: "text-xl" },
-          default: { box: "w-16 h-16", text: "text-3xl" },
-          large: { box: "w-20 h-20", text: "text-4xl" }
-        };
-        return (
-          <div className={`${sizes[size].box} bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/30`}>
-            <svg className={`${sizes[size].text} text-white`} fill="currentColor" viewBox="0 0 24 24" width="1em" height="1em">
-              <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
-            </svg>
-          </div>
-        );
+      // Check for saved session
+      useEffect(() => {
+        const savedUser = localStorage.getItem('lastcall_user');
+        const savedType = localStorage.getItem('lastcall_type');
+        if (savedUser && savedType) {
+          setUser(JSON.parse(savedUser));
+          setUserType(savedType);
+          setView(savedType === 'business' ? 'business-dashboard' : 'worker-dashboard');
+        }
+      }, []);
+
+      const logout = () => {
+        localStorage.removeItem('lastcall_user');
+        localStorage.removeItem('lastcall_type');
+        setUser(null);
+        setUserType(null);
+        setView('landing');
       };
 
-      // Landing Screen
-      if (!userType) {
+      // Landing Page
+      if (view === 'landing') {
         return (
           <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-center p-6">
             <div className="text-center mb-12 flex flex-col items-center">
@@ -156,514 +105,1160 @@
               <p className="text-slate-400 text-lg">Shift coverage in minutes, not hours</p>
             </div>
             
-            <div className="w-full max-w-sm space-y-4">
+            <div className="w-full max-w-md space-y-4">
               <button
-                onClick={() => setUserType('worker')}
-                className="w-full bg-white text-slate-800 font-semibold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] flex items-center gap-4"
+                onClick={() => { setUserType('worker'); setView('worker-auth'); setAuthMode('login'); }}
+                className="w-full bg-white hover:bg-slate-50 text-slate-800 rounded-2xl p-5 flex items-center gap-4 transition-all shadow-xl"
               >
-                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-2xl">👤</div>
+                <div className="w-12 h-12 bg-slate-200 rounded-xl flex items-center justify-center">
+                  <svg className="w-6 h-6 text-slate-600" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  </svg>
+                </div>
                 <div className="text-left">
-                  <div className="font-bold">I'm a Worker</div>
-                  <div className="text-sm text-slate-500">Pick up shifts nearby</div>
+                  <div className="font-semibold text-lg">I'm a Worker</div>
+                  <div className="text-slate-500 text-sm">Pick up shifts nearby</div>
                 </div>
               </button>
               
               <button
-                onClick={() => setUserType('business')}
-                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 text-white font-semibold py-4 px-6 rounded-xl shadow-lg shadow-brand-500/30 hover:shadow-xl transition-all hover:scale-[1.02] flex items-center gap-4"
+                onClick={() => { setUserType('business'); setView('business-auth'); setAuthMode('login'); }}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-2xl p-5 flex items-center gap-4 transition-all shadow-xl"
               >
-                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl">🏪</div>
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
+                  </svg>
+                </div>
                 <div className="text-left">
-                  <div className="font-bold">I'm a Business</div>
-                  <div className="text-sm text-white/80">Find coverage fast</div>
+                  <div className="font-semibold text-lg">I'm a Business</div>
+                  <div className="text-white/80 text-sm">Find coverage fast</div>
                 </div>
               </button>
             </div>
             
-            <div className="mt-12 text-center space-y-1">
+            <div className="mt-12 text-center">
               <p className="text-slate-500 text-sm">✓ Free for workers</p>
               <p className="text-slate-500 text-sm">✓ No commission on wages</p>
               <p className="text-slate-500 text-sm">✓ Same-day coverage</p>
             </div>
-
-            <div className="absolute bottom-6 text-slate-600 text-xs">
+            
+            <div className="absolute bottom-4 text-slate-600 text-sm">
               © 2025 LastCall • Made for the industry, by the industry
             </div>
           </div>
         );
       }
 
-      // Worker Profile Detail Modal
-      if (selectedWorker) {
-        return (
-          <div className="min-h-screen bg-slate-100">
-            <div className="bg-white">
-              <div className="p-4 flex items-center justify-between border-b">
-                <button onClick={() => setSelectedWorker(null)} className="text-slate-500 font-medium">
-                  ← Back
-                </button>
-                <span className="text-xs text-slate-400">Responded {selectedWorker.responseTime}</span>
-              </div>
-
-              <div className="p-6 text-center">
-                <div className="text-6xl mb-3">{selectedWorker.photo}</div>
-                <h2 className="text-2xl font-bold text-slate-800">{selectedWorker.name}</h2>
-                <div className="flex items-center justify-center gap-3 mt-2 text-sm text-slate-500">
-                  <span>⭐ {selectedWorker.rating}</span>
-                  <span>•</span>
-                  <span>{selectedWorker.totalShifts} shifts completed</span>
-                  <span>•</span>
-                  <span>{selectedWorker.distance}</span>
-                </div>
-                {selectedWorker.verified && (
-                  <span className="inline-block mt-3 bg-green-100 text-green-700 text-xs font-medium px-3 py-1 rounded-full">
-                    ✓ ID Verified
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="p-4">
-              <h3 className="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wide">Experience</h3>
-              <div className="bg-white rounded-xl overflow-hidden shadow-sm">
-                {selectedWorker.experience.map((exp, i) => (
-                  <div key={i} className={`p-4 ${i > 0 ? 'border-t' : ''}`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-semibold text-slate-800">{exp.role}</p>
-                        <p className="text-slate-600">{exp.place}</p>
-                        <p className="text-sm text-slate-400">{exp.location}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-sm font-medium text-slate-600">{exp.years} {exp.years === 1 ? 'year' : 'years'}</span>
-                        {exp.current && (
-                          <p className="text-xs text-green-600">Current</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <div className="bg-slate-50 p-4 border-t">
-                  <p className="text-sm text-slate-600">
-                    <span className="font-medium">Total bartending experience:</span>{' '}
-                    {selectedWorker.experience.filter(e => e.role.toLowerCase().includes('bartend')).reduce((sum, e) => sum + e.years, 0)} years
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 pt-0">
-              <h3 className="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wide">Certifications</h3>
-              <div className="flex flex-wrap gap-2">
-                {selectedWorker.certifications.map((cert, i) => (
-                  <span key={i} className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg text-sm font-medium">
-                    {cert}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-4 pt-0">
-              <h3 className="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wide">Skills</h3>
-              <div className="flex flex-wrap gap-2">
-                {selectedWorker.skills.map((skill, i) => (
-                  <span key={i} className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm">
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-4 pt-0">
-              <h3 className="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wide">Availability</h3>
-              <div className="bg-white rounded-xl p-4 shadow-sm">
-                <p className="text-slate-600">{selectedWorker.availability}</p>
-              </div>
-            </div>
-
-            <div className="p-4 pb-8">
-              <button 
-                onClick={() => {
-                  setShowConfirmation(true);
-                  setSelectedWorker(null);
-                }}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-500/30 hover:scale-[1.02] transition-transform"
-              >
-                ✓ Select {selectedWorker.name.split(' ')[0]} for This Shift
-              </button>
-              <button className="w-full mt-3 bg-white text-slate-600 font-medium py-3 rounded-xl border hover:bg-slate-50">
-                💬 Message First
-              </button>
-            </div>
-          </div>
-        );
+      // Business Auth
+      if (view === 'business-auth') {
+        return <BusinessAuth 
+          mode={authMode} 
+          setMode={setAuthMode} 
+          setView={setView} 
+          setUser={setUser}
+          onBack={() => setView('landing')}
+        />;
       }
 
-      // Confirmation screen
-      if (showConfirmation) {
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-green-500 to-emerald-600 flex flex-col items-center justify-center p-6">
-            <div className="text-center">
-              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-                <span className="text-5xl">✓</span>
-              </div>
-              <h2 className="text-3xl font-bold text-white mb-2">Shift Covered!</h2>
-              <p className="text-white/80 mb-8">Marcus is confirmed for tonight's shift</p>
-              
-              <div className="bg-white/20 backdrop-blur rounded-xl p-4 mb-8 text-white text-left">
-                <p className="font-medium">Bartender • Tonight 6PM - 2AM</p>
-                <p className="text-white/70 text-sm mt-1">Marcus will receive directions and shift details</p>
-              </div>
-              
-              <button
-                onClick={() => {
-                  setShowConfirmation(false);
-                  setShiftPosted(false);
-                  setCurrentView('dashboard');
-                }}
-                className="bg-white text-green-600 font-bold py-3 px-8 rounded-full shadow-lg hover:scale-105 transition-transform"
-              >
-                Back to Dashboard
-              </button>
-            </div>
-          </div>
-        );
+      // Worker Auth
+      if (view === 'worker-auth') {
+        return <WorkerAuth 
+          mode={authMode} 
+          setMode={setAuthMode} 
+          setView={setView} 
+          setUser={setUser}
+          onBack={() => setView('landing')}
+        />;
       }
 
-      // Business View
-      if (userType === 'business') {
-        return (
-          <div className="min-h-screen bg-slate-100">
-            <div className="bg-white border-b sticky top-0 z-10">
-              <div className="p-4 flex items-center justify-between">
-                <button onClick={() => setUserType(null)} className="text-slate-500">
-                  ← Exit
-                </button>
-                <div className="flex items-center gap-2">
-                  <Logo size="small" />
-                  <span className="font-bold text-slate-800">Last<span className="text-brand-500">Call</span></span>
-                </div>
-                <button className="text-slate-500">
-                  ⚙️
-                </button>
-              </div>
-            </div>
-
-            {!shiftPosted ? (
-              <div className="p-4">
-                <h2 className="text-2xl font-bold text-slate-800 mb-6">Post an Open Shift</h2>
-                
-                <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Business Name</label>
-                    <input 
-                      type="text" 
-                      defaultValue="Battlefield Bar & Grill"
-                      className="w-full p-3 border rounded-lg bg-slate-50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Address</label>
-                    <input 
-                      type="text" 
-                      placeholder="123 Main St, Leesburg, VA"
-                      className="w-full p-3 border rounded-lg"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-600 mb-1">Position</label>
-                      <select className="w-full p-3 border rounded-lg bg-white">
-                        <option>Bartender</option>
-                        <option>Server</option>
-                        <option>Barback</option>
-                        <option>Line Cook</option>
-                        <option>Host</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-600 mb-1">Experience Needed</label>
-                      <select className="w-full p-3 border rounded-lg bg-white">
-                        <option>1+ years</option>
-                        <option>2+ years</option>
-                        <option>3+ years</option>
-                        <option>Any</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-600 mb-1">Date</label>
-                      <select className="w-full p-3 border rounded-lg bg-white">
-                        <option>Tonight</option>
-                        <option>Tomorrow</option>
-                        <option>This Weekend</option>
-                        <option>Pick Date...</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-600 mb-1">Shift Time</label>
-                      <input 
-                        type="text" 
-                        placeholder="6PM - 2AM"
-                        className="w-full p-3 border rounded-lg"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Pay</label>
-                    <input 
-                      type="text" 
-                      placeholder="$200 + tips"
-                      className="w-full p-3 border rounded-lg"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2">
-                    <input type="checkbox" id="urgent" className="w-5 h-5 rounded accent-brand-500" defaultChecked />
-                    <label htmlFor="urgent" className="text-slate-600">🔥 Mark as Urgent (notify workers immediately)</label>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => setShiftPosted(true)}
-                  className="w-full mt-6 bg-gradient-to-r from-brand-500 to-brand-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-brand-500/30 hover:scale-[1.02] transition-transform"
-                >
-                  📞 Make the LastCall
-                </button>
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-800">Interested Workers</h2>
-                    <p className="text-slate-500 text-sm">Bartender • Tonight 6PM - 2AM</p>
-                  </div>
-                  <span className="bg-green-100 text-green-700 text-sm font-medium px-3 py-1 rounded-full">
-                    4 responded
-                  </span>
-                </div>
-
-                <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                  <button className="bg-brand-600 text-white px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap">
-                    All (4)
-                  </button>
-                  <button className="bg-white text-slate-600 px-4 py-2 rounded-full text-sm font-medium border whitespace-nowrap">
-                    3+ Years Exp
-                  </button>
-                  <button className="bg-white text-slate-600 px-4 py-2 rounded-full text-sm font-medium border whitespace-nowrap">
-                    Top Rated
-                  </button>
-                  <button className="bg-white text-slate-600 px-4 py-2 rounded-full text-sm font-medium border whitespace-nowrap">
-                    Closest
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {availableWorkers.map((worker) => (
-                    <div 
-                      key={worker.id} 
-                      onClick={() => setSelectedWorker(worker)}
-                      className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                    >
-                      <div className="flex gap-4">
-                        <div className="text-4xl">{worker.photo}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-slate-800">{worker.name}</h3>
-                            <span className="text-xs text-slate-400">{worker.responseTime}</span>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
-                            <span>⭐ {worker.rating}</span>
-                            <span>•</span>
-                            <span>{worker.totalShifts} shifts</span>
-                            <span>•</span>
-                            <span>{worker.distance}</span>
-                          </div>
-
-                          <div className="mt-3 bg-slate-50 rounded-lg p-2">
-                            <p className="text-sm text-slate-600">
-                              <span className="font-medium">{worker.experience[0].years} yrs</span> as {worker.experience[0].role}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              Last: {worker.experience[0].place}
-                            </p>
-                          </div>
-
-                          <div className="flex gap-1 mt-2 flex-wrap">
-                            {worker.certifications.slice(0, 2).map((cert, i) => (
-                              <span key={i} className="bg-blue-50 text-blue-600 text-xs px-2 py-0.5 rounded">
-                                {cert}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-2 mt-4">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedWorker(worker);
-                          }}
-                          className="flex-1 bg-slate-100 text-slate-600 font-medium py-2 rounded-lg hover:bg-slate-200"
-                        >
-                          View Profile
-                        </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowConfirmation(true);
-                          }}
-                          className="flex-1 bg-green-500 text-white font-medium py-2 rounded-lg hover:bg-green-600"
-                        >
-                          Select
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
+      // Business Dashboard
+      if (view === 'business-dashboard') {
+        return <BusinessDashboard user={user} onLogout={logout} />;
       }
 
-      // Worker View
-      if (userType === 'worker') {
-        return (
-          <div className="min-h-screen bg-slate-100 pb-24">
-            <div className="bg-white border-b sticky top-0 z-10">
-              <div className="p-4 flex items-center justify-between">
-                <button onClick={() => setUserType(null)} className="text-slate-500">
-                  ← Exit
-                </button>
-                <div className="flex items-center gap-2">
-                  <Logo size="small" />
-                  <span className="font-bold text-slate-800">Last<span className="text-brand-500">Call</span></span>
-                </div>
-                <div className="relative">
-                  <span className="text-xl">🔔</span>
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-brand-500 rounded-full"></span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-white border-b">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-slate-800">Your Status</p>
-                  <p className="text-sm text-slate-500">
-                    {workerAvailable ? "You'll get notified of new shifts" : "You're hidden from new shifts"}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setWorkerAvailable(!workerAvailable)}
-                  className={`w-14 h-8 rounded-full transition-colors relative ${
-                    workerAvailable ? 'bg-green-500' : 'bg-slate-300'
-                  }`}
-                >
-                  <div className={`w-6 h-6 bg-white rounded-full absolute top-1 transition-transform shadow ${
-                    workerAvailable ? 'translate-x-7' : 'translate-x-1'
-                  }`} />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-slate-800">Shifts Near You</h2>
-                <button className="text-brand-600 font-medium text-sm">Filter</button>
-              </div>
-
-              <div className="space-y-3">
-                {availableShifts.map((shift) => (
-                  <div key={shift.id} className="bg-white rounded-xl p-4 shadow-sm">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-slate-800">{shift.business}</h3>
-                          {shift.urgent && (
-                            <span className="bg-brand-100 text-brand-600 text-xs font-medium px-2 py-0.5 rounded-full">
-                              🔥 Urgent
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-500 mt-0.5">{shift.address}</p>
-                      </div>
-                      <span className="text-xs text-slate-400">{shift.posted}</span>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-slate-50 rounded-lg p-2">
-                        <p className="text-xs text-slate-500">Position</p>
-                        <p className="font-medium text-slate-700">{shift.position}</p>
-                      </div>
-                      <div className="bg-slate-50 rounded-lg p-2">
-                        <p className="text-xs text-slate-500">When</p>
-                        <p className="font-medium text-slate-700">{shift.date}</p>
-                      </div>
-                      <div className="bg-green-50 rounded-lg p-2">
-                        <p className="text-xs text-green-600">Pay</p>
-                        <p className="font-medium text-green-700">{shift.pay}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                      <span className="text-sm text-slate-500">📍 {shift.distance} • {shift.time}</span>
-                      <button 
-                        onClick={() => {
-                          if (!interestedShifts.includes(shift.id)) {
-                            setInterestedShifts([...interestedShifts, shift.id]);
-                          }
-                        }}
-                        className={`font-medium px-4 py-2 rounded-lg transition-all ${
-                          interestedShifts.includes(shift.id)
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gradient-to-r from-brand-500 to-brand-600 text-white hover:scale-105'
-                        }`}
-                      >
-                        {interestedShifts.includes(shift.id) ? '✓ Sent' : "I'm Interested"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4">
-              <div className="flex justify-around">
-                <button className="flex flex-col items-center text-brand-600">
-                  <span className="text-xl">🏠</span>
-                  <span className="text-xs font-medium">Shifts</span>
-                </button>
-                <button className="flex flex-col items-center text-slate-400">
-                  <span className="text-xl">📋</span>
-                  <span className="text-xs">My Schedule</span>
-                </button>
-                <button className="flex flex-col items-center text-slate-400">
-                  <span className="text-xl">💬</span>
-                  <span className="text-xs">Messages</span>
-                </button>
-                <button className="flex flex-col items-center text-slate-400">
-                  <span className="text-xl">👤</span>
-                  <span className="text-xs">Profile</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        );
+      // Worker Dashboard
+      if (view === 'worker-dashboard') {
+        return <WorkerDashboard user={user} onLogout={logout} />;
       }
 
       return null;
-    };
+    }
 
-    ReactDOM.render(<LastCallApp />, document.getElementById('root'));
+    // Business Auth Component
+    function BusinessAuth({ mode, setMode, setView, setUser, onBack }) {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [businessName, setBusinessName] = useState('');
+      const [address, setAddress] = useState('');
+      const [phone, setPhone] = useState('');
+      const [posSystem, setPosSystem] = useState('');
+      const [menuNotes, setMenuNotes] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+          const passwordHash = await hashPassword(password);
+
+          if (mode === 'signup') {
+            const { data, error: insertError } = await supabase
+              .from('businesses')
+              .insert([{
+                email,
+                password_hash: passwordHash,
+                business_name: businessName,
+                address,
+                phone,
+                pos_system: posSystem,
+                menu_notes: menuNotes
+              }])
+              .select()
+              .single();
+
+            if (insertError) {
+              if (insertError.code === '23505') {
+                setError('Email already registered. Please log in.');
+              } else {
+                setError(insertError.message);
+              }
+              setLoading(false);
+              return;
+            }
+
+            localStorage.setItem('lastcall_user', JSON.stringify(data));
+            localStorage.setItem('lastcall_type', 'business');
+            setUser(data);
+            setView('business-dashboard');
+          } else {
+            const { data, error: selectError } = await supabase
+              .from('businesses')
+              .select('*')
+              .eq('email', email)
+              .eq('password_hash', passwordHash)
+              .single();
+
+            if (selectError || !data) {
+              setError('Invalid email or password');
+              setLoading(false);
+              return;
+            }
+
+            localStorage.setItem('lastcall_user', JSON.stringify(data));
+            localStorage.setItem('lastcall_type', 'business');
+            setUser(data);
+            setView('business-dashboard');
+          }
+        } catch (err) {
+          setError('Something went wrong. Please try again.');
+        }
+        setLoading(false);
+      };
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-center p-6">
+          <button onClick={onBack} className="absolute top-4 left-4 text-slate-400 hover:text-white flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+
+          <div className="w-full max-w-md">
+            <div className="text-center mb-8">
+              <Logo />
+              <h2 className="text-2xl font-bold text-white mt-4">
+                {mode === 'login' ? 'Business Login' : 'Register Your Business'}
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-6 space-y-4">
+              {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
+
+              <div>
+                <label className="text-slate-300 text-sm">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              {mode === 'signup' && (
+                <>
+                  <div>
+                    <label className="text-slate-300 text-sm">Business Name</label>
+                    <input
+                      type="text"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">Address</label>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      placeholder="123 Main St, City, State"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">Phone</label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">POS System</label>
+                    <select
+                      value={posSystem}
+                      onChange={(e) => setPosSystem(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    >
+                      <option value="">Select POS System</option>
+                      {POS_SYSTEMS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">Menu Notes (optional)</label>
+                    <textarea
+                      value={menuNotes}
+                      onChange={(e) => setMenuNotes(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      rows={3}
+                      placeholder="Describe your menu, signature items, etc."
+                    />
+                  </div>
+                </>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? 'Please wait...' : (mode === 'login' ? 'Log In' : 'Create Account')}
+              </button>
+
+              <p className="text-center text-slate-400 text-sm">
+                {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                <button
+                  type="button"
+                  onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
+                  className="text-brand-400 hover:text-brand-300"
+                >
+                  {mode === 'login' ? 'Sign up' : 'Log in'}
+                </button>
+              </p>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Worker Auth Component
+    function WorkerAuth({ mode, setMode, setView, setUser, onBack }) {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [fullName, setFullName] = useState('');
+      const [phone, setPhone] = useState('');
+      const [selectedPOS, setSelectedPOS] = useState([]);
+      const [selectedPositions, setSelectedPositions] = useState([]);
+      const [yearsExperience, setYearsExperience] = useState('');
+      const [selectedCerts, setSelectedCerts] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const toggleSelection = (item, selected, setSelected) => {
+        if (selected.includes(item)) {
+          setSelected(selected.filter(i => i !== item));
+        } else {
+          setSelected([...selected, item]);
+        }
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+          const passwordHash = await hashPassword(password);
+
+          if (mode === 'signup') {
+            if (selectedPositions.length === 0) {
+              setError('Please select at least one position');
+              setLoading(false);
+              return;
+            }
+
+            const { data, error: insertError } = await supabase
+              .from('workers')
+              .insert([{
+                email,
+                password_hash: passwordHash,
+                full_name: fullName,
+                phone,
+                pos_systems: selectedPOS,
+                positions: selectedPositions,
+                years_experience: parseInt(yearsExperience) || 0,
+                certifications: selectedCerts,
+                available: true
+              }])
+              .select()
+              .single();
+
+            if (insertError) {
+              if (insertError.code === '23505') {
+                setError('Email already registered. Please log in.');
+              } else {
+                setError(insertError.message);
+              }
+              setLoading(false);
+              return;
+            }
+
+            localStorage.setItem('lastcall_user', JSON.stringify(data));
+            localStorage.setItem('lastcall_type', 'worker');
+            setUser(data);
+            setView('worker-dashboard');
+          } else {
+            const { data, error: selectError } = await supabase
+              .from('workers')
+              .select('*')
+              .eq('email', email)
+              .eq('password_hash', passwordHash)
+              .single();
+
+            if (selectError || !data) {
+              setError('Invalid email or password');
+              setLoading(false);
+              return;
+            }
+
+            localStorage.setItem('lastcall_user', JSON.stringify(data));
+            localStorage.setItem('lastcall_type', 'worker');
+            setUser(data);
+            setView('worker-dashboard');
+          }
+        } catch (err) {
+          setError('Something went wrong. Please try again.');
+        }
+        setLoading(false);
+      };
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-start p-6 overflow-y-auto">
+          <button onClick={onBack} className="absolute top-4 left-4 text-slate-400 hover:text-white flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+
+          <div className="w-full max-w-md mt-12">
+            <div className="text-center mb-8 flex flex-col items-center">
+              <Logo />
+              <h2 className="text-2xl font-bold text-white mt-4">
+                {mode === 'login' ? 'Worker Login' : 'Create Worker Profile'}
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-6 space-y-4">
+              {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
+
+              <div>
+                <label className="text-slate-300 text-sm">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              {mode === 'signup' && (
+                <>
+                  <div>
+                    <label className="text-slate-300 text-sm">Full Name</label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">Phone</label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">Years of Experience</label>
+                    <input
+                      type="number"
+                      value={yearsExperience}
+                      onChange={(e) => setYearsExperience(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      min="0"
+                      max="50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm mb-2 block">Positions (select all that apply)</label>
+                    <div className="flex flex-wrap gap-2">
+                      {POSITIONS.map(pos => (
+                        <button
+                          key={pos}
+                          type="button"
+                          onClick={() => toggleSelection(pos, selectedPositions, setSelectedPositions)}
+                          className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                            selectedPositions.includes(pos)
+                              ? 'bg-brand-500 text-white'
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          {pos}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm mb-2 block">POS Systems You Know</label>
+                    <div className="flex flex-wrap gap-2">
+                      {POS_SYSTEMS.map(pos => (
+                        <button
+                          key={pos}
+                          type="button"
+                          onClick={() => toggleSelection(pos, selectedPOS, setSelectedPOS)}
+                          className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                            selectedPOS.includes(pos)
+                              ? 'bg-green-500 text-white'
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          {pos}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm mb-2 block">Certifications</label>
+                    <div className="flex flex-wrap gap-2">
+                      {CERTIFICATIONS.map(cert => (
+                        <button
+                          key={cert}
+                          type="button"
+                          onClick={() => toggleSelection(cert, selectedCerts, setSelectedCerts)}
+                          className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                            selectedCerts.includes(cert)
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          {cert}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? 'Please wait...' : (mode === 'login' ? 'Log In' : 'Create Profile')}
+              </button>
+
+              <p className="text-center text-slate-400 text-sm">
+                {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                <button
+                  type="button"
+                  onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
+                  className="text-brand-400 hover:text-brand-300"
+                >
+                  {mode === 'login' ? 'Sign up' : 'Log in'}
+                </button>
+              </p>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Business Dashboard
+    function BusinessDashboard({ user, onLogout }) {
+      const [shifts, setShifts] = useState([]);
+      const [showPostShift, setShowPostShift] = useState(false);
+      const [selectedShift, setSelectedShift] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        loadShifts();
+      }, []);
+
+      const loadShifts = async () => {
+        const { data } = await supabase
+          .from('shifts')
+          .select('*')
+          .eq('business_id', user.id)
+          .order('shift_date', { ascending: true });
+        setShifts(data || []);
+        setLoading(false);
+      };
+
+      if (showPostShift) {
+        return <PostShiftForm user={user} onBack={() => setShowPostShift(false)} onSuccess={() => { setShowPostShift(false); loadShifts(); }} />;
+      }
+
+      if (selectedShift) {
+        return <ShiftInterests shift={selectedShift} business={user} onBack={() => { setSelectedShift(null); loadShifts(); }} />;
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-900">
+          <header className="bg-slate-800 border-b border-slate-700 p-4">
+            <div className="max-w-4xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Logo size="small" />
+                <div>
+                  <h1 className="text-white font-semibold">{user.business_name}</h1>
+                  <p className="text-slate-400 text-sm">{user.pos_system || 'No POS set'}</p>
+                </div>
+              </div>
+              <button onClick={onLogout} className="text-slate-400 hover:text-white text-sm">Log out</button>
+            </div>
+          </header>
+
+          <main className="max-w-4xl mx-auto p-4">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white">Your Shifts</h2>
+              <button
+                onClick={() => setShowPostShift(true)}
+                className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Post Shift
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="text-slate-400 text-center py-12">Loading...</div>
+            ) : shifts.length === 0 ? (
+              <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                <p className="text-slate-400 mb-4">No shifts posted yet</p>
+                <button
+                  onClick={() => setShowPostShift(true)}
+                  className="text-brand-400 hover:text-brand-300"
+                >
+                  Post your first shift →
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {shifts.map(shift => (
+                  <ShiftCard 
+                    key={shift.id} 
+                    shift={shift} 
+                    onClick={() => setSelectedShift(shift)}
+                    showStatus
+                  />
+                ))}
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // Post Shift Form
+    function PostShiftForm({ user, onBack, onSuccess }) {
+      const [position, setPosition] = useState('');
+      const [shiftDate, setShiftDate] = useState('');
+      const [startTime, setStartTime] = useState('');
+      const [endTime, setEndTime] = useState('');
+      const [hourlyRate, setHourlyRate] = useState('');
+      const [notes, setNotes] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        const { error: insertError } = await supabase
+          .from('shifts')
+          .insert([{
+            business_id: user.id,
+            position,
+            shift_date: shiftDate,
+            start_time: startTime,
+            end_time: endTime,
+            hourly_rate: parseFloat(hourlyRate),
+            notes,
+            status: 'open'
+          }]);
+
+        if (insertError) {
+          setError(insertError.message);
+          setLoading(false);
+          return;
+        }
+
+        onSuccess();
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-900">
+          <header className="bg-slate-800 border-b border-slate-700 p-4">
+            <div className="max-w-4xl mx-auto flex items-center gap-4">
+              <button onClick={onBack} className="text-slate-400 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h1 className="text-xl font-bold text-white">Post a Shift</h1>
+            </div>
+          </header>
+
+          <main className="max-w-lg mx-auto p-4">
+            <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-6 space-y-4">
+              {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
+
+              <div>
+                <label className="text-slate-300 text-sm">Position</label>
+                <select
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                >
+                  <option value="">Select position</option>
+                  {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Date</label>
+                <input
+                  type="date"
+                  value={shiftDate}
+                  onChange={(e) => setShiftDate(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-slate-300 text-sm">Start Time</label>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 text-sm">End Time</label>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Hourly Rate ($)</label>
+                <input
+                  type="number"
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  min="0"
+                  step="0.50"
+                  placeholder="25.00"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Notes (optional)</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  rows={3}
+                  placeholder="Any special requirements or info..."
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? 'Posting...' : 'Post Shift'}
+              </button>
+            </form>
+          </main>
+        </div>
+      );
+    }
+
+    // Shift Interests (Business views interested workers)
+    function ShiftInterests({ shift, business, onBack }) {
+      const [interests, setInterests] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        loadInterests();
+      }, []);
+
+      const loadInterests = async () => {
+        const { data } = await supabase
+          .from('interests')
+          .select(`
+            *,
+            worker:workers(*)
+          `)
+          .eq('shift_id', shift.id);
+        
+        // Sort by POS match
+        const sorted = (data || []).sort((a, b) => {
+          const aMatch = a.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
+          const bMatch = b.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
+          return bMatch - aMatch;
+        });
+        
+        setInterests(sorted);
+        setLoading(false);
+      };
+
+      const acceptWorker = async (interest) => {
+        await supabase
+          .from('shifts')
+          .update({ status: 'filled', filled_by: interest.worker_id })
+          .eq('id', shift.id);
+
+        await supabase
+          .from('interests')
+          .update({ status: 'accepted' })
+          .eq('id', interest.id);
+
+        // Reject others
+        await supabase
+          .from('interests')
+          .update({ status: 'rejected' })
+          .eq('shift_id', shift.id)
+          .neq('id', interest.id);
+
+        onBack();
+      };
+
+      const formatDate = (date) => new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const formatTime = (time) => {
+        const [h, m] = time.split(':');
+        const hour = parseInt(h);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = hour % 12 || 12;
+        return `${hour12}:${m} ${ampm}`;
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-900">
+          <header className="bg-slate-800 border-b border-slate-700 p-4">
+            <div className="max-w-4xl mx-auto flex items-center gap-4">
+              <button onClick={onBack} className="text-slate-400 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-white">{shift.position}</h1>
+                <p className="text-slate-400 text-sm">{formatDate(shift.shift_date)} • {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</p>
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-4xl mx-auto p-4">
+            <h2 className="text-lg font-semibold text-white mb-4">
+              {shift.status === 'filled' ? 'Shift Filled' : `Interested Workers (${interests.length})`}
+            </h2>
+
+            {loading ? (
+              <div className="text-slate-400 text-center py-12">Loading...</div>
+            ) : interests.length === 0 ? (
+              <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                <p className="text-slate-400">No workers have expressed interest yet</p>
+                <p className="text-slate-500 text-sm mt-2">Check back soon!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {interests.map(interest => {
+                  const worker = interest.worker;
+                  const posMatch = worker?.pos_systems?.includes(business.pos_system);
+                  
+                  return (
+                    <div key={interest.id} className={`bg-slate-800 rounded-2xl p-4 ${interest.status === 'accepted' ? 'ring-2 ring-green-500' : ''}`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-white font-semibold">
+                            {worker?.full_name?.charAt(0) || '?'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-white font-semibold">{worker?.full_name}</h3>
+                              {posMatch && (
+                                <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
+                                  Knows {business.pos_system}
+                                </span>
+                              )}
+                              {interest.status === 'accepted' && (
+                                <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                                  Accepted
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-slate-400 text-sm">{worker?.years_experience || 0} years experience</p>
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {worker?.positions?.map(pos => (
+                                <span key={pos} className="bg-slate-700 text-slate-300 text-xs px-2 py-1 rounded">
+                                  {pos}
+                                </span>
+                              ))}
+                            </div>
+                            {worker?.certifications?.length > 0 && worker.certifications[0] !== 'None' && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {worker.certifications.filter(c => c !== 'None').map(cert => (
+                                  <span key={cert} className="bg-blue-500/20 text-blue-400 text-xs px-2 py-1 rounded">
+                                    {cert}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {worker?.phone && (
+                              <p className="text-slate-500 text-sm mt-2">📞 {worker.phone}</p>
+                            )}
+                          </div>
+                        </div>
+                        {shift.status === 'open' && (
+                          <button
+                            onClick={() => acceptWorker(interest)}
+                            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-semibold"
+                          >
+                            Accept
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // Worker Dashboard
+    function WorkerDashboard({ user, onLogout }) {
+      const [shifts, setShifts] = useState([]);
+      const [myInterests, setMyInterests] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [available, setAvailable] = useState(user.available);
+
+      useEffect(() => {
+        loadData();
+      }, []);
+
+      const loadData = async () => {
+        // Load open shifts
+        const { data: shiftsData } = await supabase
+          .from('shifts')
+          .select(`
+            *,
+            business:businesses(*)
+          `)
+          .eq('status', 'open')
+          .gte('shift_date', new Date().toISOString().split('T')[0])
+          .order('shift_date', { ascending: true });
+
+        // Filter to positions user works
+        const filtered = (shiftsData || []).filter(shift => 
+          user.positions?.includes(shift.position)
+        );
+
+        // Sort by POS match
+        const sorted = filtered.sort((a, b) => {
+          const aMatch = a.business?.pos_system && user.pos_systems?.includes(a.business.pos_system) ? 1 : 0;
+          const bMatch = b.business?.pos_system && user.pos_systems?.includes(b.business.pos_system) ? 1 : 0;
+          return bMatch - aMatch;
+        });
+
+        setShifts(sorted);
+
+        // Load my interests
+        const { data: interestsData } = await supabase
+          .from('interests')
+          .select('shift_id, status')
+          .eq('worker_id', user.id);
+        
+        setMyInterests(interestsData || []);
+        setLoading(false);
+      };
+
+      const toggleAvailable = async () => {
+        const newAvailable = !available;
+        setAvailable(newAvailable);
+        await supabase
+          .from('workers')
+          .update({ available: newAvailable })
+          .eq('id', user.id);
+      };
+
+      const expressInterest = async (shiftId) => {
+        await supabase
+          .from('interests')
+          .insert([{ shift_id: shiftId, worker_id: user.id }]);
+        loadData();
+      };
+
+      const withdrawInterest = async (shiftId) => {
+        await supabase
+          .from('interests')
+          .delete()
+          .eq('shift_id', shiftId)
+          .eq('worker_id', user.id);
+        loadData();
+      };
+
+      const getInterestStatus = (shiftId) => {
+        const interest = myInterests.find(i => i.shift_id === shiftId);
+        return interest?.status || null;
+      };
+
+      const formatDate = (date) => new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const formatTime = (time) => {
+        const [h, m] = time.split(':');
+        const hour = parseInt(h);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = hour % 12 || 12;
+        return `${hour12}:${m} ${ampm}`;
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-900">
+          <header className="bg-slate-800 border-b border-slate-700 p-4">
+            <div className="max-w-4xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Logo size="small" />
+                <div>
+                  <h1 className="text-white font-semibold">{user.full_name}</h1>
+                  <p className="text-slate-400 text-sm">{user.positions?.join(', ')}</p>
+                </div>
+              </div>
+              <button onClick={onLogout} className="text-slate-400 hover:text-white text-sm">Log out</button>
+            </div>
+          </header>
+
+          <main className="max-w-4xl mx-auto p-4">
+            <div className="bg-slate-800 rounded-2xl p-4 mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-white font-medium">Available for shifts?</p>
+                <p className="text-slate-400 text-sm">Toggle to show you're ready to work</p>
+              </div>
+              <button
+                onClick={toggleAvailable}
+                className={`w-14 h-8 rounded-full transition-all ${available ? 'bg-green-500' : 'bg-slate-600'}`}
+              >
+                <div className={`w-6 h-6 bg-white rounded-full shadow transition-all ${available ? 'ml-7' : 'ml-1'}`} />
+              </button>
+            </div>
+
+            <h2 className="text-xl font-bold text-white mb-4">Available Shifts</h2>
+
+            {loading ? (
+              <div className="text-slate-400 text-center py-12">Loading...</div>
+            ) : shifts.length === 0 ? (
+              <div className="bg-slate-800 rounded-2xl p-8 text-center">
+                <p className="text-slate-400">No shifts available right now</p>
+                <p className="text-slate-500 text-sm mt-2">Check back soon!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {shifts.map(shift => {
+                  const posMatch = shift.business?.pos_system && user.pos_systems?.includes(shift.business.pos_system);
+                  const interestStatus = getInterestStatus(shift.id);
+                  const hasInterest = myInterests.some(i => i.shift_id === shift.id);
+
+                  return (
+                    <div key={shift.id} className={`bg-slate-800 rounded-2xl p-4 ${posMatch ? 'ring-2 ring-green-500/50' : ''}`}>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-white font-semibold">{shift.position}</h3>
+                            {posMatch && (
+                              <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
+                                You know {shift.business.pos_system}!
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
+                          <p className="text-slate-400 text-sm">{shift.business?.address}</p>
+                          <div className="mt-2 flex items-center gap-4 text-sm">
+                            <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
+                            <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
+                            <span className="text-green-400 font-semibold">${shift.hourly_rate}/hr</span>
+                          </div>
+                          {shift.notes && <p className="text-slate-500 text-sm mt-2">{shift.notes}</p>}
+                          {shift.business?.menu_notes && (
+                            <details className="mt-2">
+                              <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
+                              <p className="text-slate-500 text-sm mt-1 pl-4">{shift.business.menu_notes}</p>
+                            </details>
+                          )}
+                        </div>
+                        <div>
+                          {interestStatus === 'accepted' ? (
+                            <span className="bg-green-500 text-white px-4 py-2 rounded-xl font-semibold">
+                              ✓ You got it!
+                            </span>
+                          ) : interestStatus === 'rejected' ? (
+                            <span className="bg-slate-600 text-slate-400 px-4 py-2 rounded-xl">
+                              Not selected
+                            </span>
+                          ) : hasInterest ? (
+                            <button
+                              onClick={() => withdrawInterest(shift.id)}
+                              className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded-xl font-semibold"
+                            >
+                              Withdraw
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => expressInterest(shift.id)}
+                              className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-xl font-semibold"
+                            >
+                              I'm Interested
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // Shift Card Component
+    function ShiftCard({ shift, onClick, showStatus }) {
+      const formatDate = (date) => new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const formatTime = (time) => {
+        const [h, m] = time.split(':');
+        const hour = parseInt(h);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = hour % 12 || 12;
+        return `${hour12}:${m} ${ampm}`;
+      };
+
+      return (
+        <div 
+          onClick={onClick}
+          className="bg-slate-800 rounded-2xl p-4 cursor-pointer hover:bg-slate-750 transition-all"
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-white font-semibold">{shift.position}</h3>
+                {showStatus && (
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    shift.status === 'filled' ? 'bg-green-500/20 text-green-400' :
+                    shift.status === 'cancelled' ? 'bg-red-500/20 text-red-400' :
+                    'bg-yellow-500/20 text-yellow-400'
+                  }`}>
+                    {shift.status}
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 flex items-center gap-4 text-sm">
+                <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
+                <span className="text-slate-300">🕐 {formatTime(shift.start_time)} - {formatTime(shift.end_time)}</span>
+                <span className="text-green-400 font-semibold">${shift.hourly_rate}/hr</span>
+              </div>
+            </div>
+            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
   </script>
 </body>
 </html>
