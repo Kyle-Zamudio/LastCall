@@ -143,8 +143,9 @@
               <p className="text-slate-500 text-sm">✓ Same-day coverage</p>
             </div>
             
-            <div className="absolute bottom-4 text-slate-600 text-sm">
-              Need help? Text <a href="sms:8084455890" className="text-brand-400 hover:text-brand-300">808-445-5890</a>
+            <div className="absolute bottom-4 text-center text-slate-600 text-sm">
+              <p>Need help? Email <a href="mailto:Zkyle86@gmail.com" className="text-brand-400 hover:text-brand-300">Zkyle86@gmail.com</a></p>
+              <p className="text-slate-500 text-xs mt-2">⚠️ This site is still in development. Full working version coming soon!</p>
             </div>
           </div>
         );
@@ -1281,33 +1282,19 @@
               ) : (
                 <div className="space-y-4">
                   {pastShifts.map(shift => (
-                    <div key={shift.id} className="bg-slate-800/50 rounded-2xl p-4 opacity-75">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-white font-semibold">{shift.position}</h3>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              shift.status === 'filled' ? 'bg-green-500/20 text-green-400' :
-                              shift.status === 'cancelled' ? 'bg-red-500/20 text-red-400' :
-                              'bg-yellow-500/20 text-yellow-400'
-                            }`}>
-                              {shift.status}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex items-center gap-4 text-sm">
-                            <span className="text-slate-400">📅 {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                            <span className="text-slate-400">${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <PastShiftCard 
+                      key={shift.id} 
+                      shift={shift} 
+                      onUpdate={() => loadShifts()}
+                    />
                   ))}
                 </div>
               )
             )}
           </main>
           <footer className="text-center py-6 text-slate-500 text-sm">
-            Need help? Text <a href="sms:8084455890" className="text-brand-400 hover:text-brand-300">808-445-5890</a>
+            <p>Need help? Email <a href="mailto:Zkyle86@gmail.com" className="text-brand-400 hover:text-brand-300">Zkyle86@gmail.com</a></p>
+            <p className="text-slate-600 text-xs mt-2">⚠️ This site is still in development. Full working version coming soon!</p>
           </footer>
         </div>
       );
@@ -2669,7 +2656,8 @@
             )}
           </main>
           <footer className="text-center py-6 text-slate-500 text-sm">
-            Need help? Text <a href="sms:8084455890" className="text-brand-400 hover:text-brand-300">808-445-5890</a>
+            <p>Need help? Email <a href="mailto:Zkyle86@gmail.com" className="text-brand-400 hover:text-brand-300">Zkyle86@gmail.com</a></p>
+            <p className="text-slate-600 text-xs mt-2">⚠️ This site is still in development. Full working version coming soon!</p>
           </footer>
         </div>
       );
@@ -2852,6 +2840,206 @@
               </button>
             </form>
           </main>
+        </div>
+      );
+    }
+
+    // Past Shift Card Component (with completion tracking)
+    function PastShiftCard({ shift, onUpdate }) {
+      const [showPaymentForm, setShowPaymentForm] = useState(false);
+      // Try to get payment info from dedicated fields, fallback to parsing notes if needed
+      const getPaymentInfo = () => {
+        if (shift.payment_method || shift.amount_paid || shift.payment_notes) {
+          return {
+            method: shift.payment_method || '',
+            amount: shift.amount_paid || '',
+            notes: shift.payment_notes || ''
+          };
+        }
+        // Fallback: try to parse from notes field if it contains payment info
+        return { method: '', amount: '', notes: '' };
+      };
+      
+      const paymentInfo = getPaymentInfo();
+      const [paymentMethod, setPaymentMethod] = useState(paymentInfo.method);
+      const [amountPaid, setAmountPaid] = useState(paymentInfo.amount ? paymentInfo.amount.toString() : '');
+      const [paymentNotes, setPaymentNotes] = useState(paymentInfo.notes);
+      const [isCompleted, setIsCompleted] = useState(shift.completed || false);
+      const [saving, setSaving] = useState(false);
+      const [error, setError] = useState('');
+
+      const markCompleted = async () => {
+        setSaving(true);
+        setError('');
+        
+        // Build update data - only include fields that exist in database
+        const updateData = {
+          completed: true
+        };
+        
+        // Add payment fields if they have values (will work once migration is run)
+        if (paymentMethod) updateData.payment_method = paymentMethod;
+        if (amountPaid) updateData.amount_paid = parseFloat(amountPaid);
+        if (paymentNotes) updateData.payment_notes = paymentNotes;
+
+        const { error: updateError } = await supabase
+          .from('shifts')
+          .update(updateData)
+          .eq('id', shift.id);
+
+        if (updateError) {
+          // If fields don't exist yet, try storing in notes as fallback
+          if (updateError.message.includes('column') && updateError.message.includes('does not exist')) {
+            const paymentInfoText = `PAYMENT: Method=${paymentMethod || 'N/A'}, Amount=$${amountPaid || '0'}, Notes=${paymentNotes || 'None'}`;
+            const existingNotes = shift.notes || '';
+            const combinedNotes = existingNotes ? `${existingNotes}\n\n${paymentInfoText}` : paymentInfoText;
+            
+            const { error: fallbackError } = await supabase
+              .from('shifts')
+              .update({ 
+                completed: true,
+                notes: combinedNotes 
+              })
+              .eq('id', shift.id);
+            
+            if (fallbackError) {
+              setError('Failed to save payment info. Please run the database migration.');
+              setSaving(false);
+              return;
+            }
+          } else {
+            setError(updateError.message);
+            setSaving(false);
+            return;
+          }
+        }
+
+        setIsCompleted(true);
+        setShowPaymentForm(false);
+        setSaving(false);
+        onUpdate();
+      };
+
+      const formatDate = (date) => new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+      if (showPaymentForm) {
+        return (
+          <div className="bg-slate-800 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold">Mark as Completed & Add Payment</h3>
+              <button onClick={() => setShowPaymentForm(false)} className="text-slate-400 hover:text-white">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm mb-4">{error}</div>}
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-slate-300 text-sm">Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                >
+                  <option value="">Select payment method</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Venmo">Venmo</option>
+                  <option value="PayPal">PayPal</option>
+                  <option value="Zelle">Zelle</option>
+                  <option value="Cash App">Cash App</option>
+                  <option value="Check">Check</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Amount Paid ($)</label>
+                <input
+                  type="number"
+                  value={amountPaid}
+                  onChange={(e) => setAmountPaid(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Payment Notes (optional)</label>
+                <textarea
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  rows={2}
+                  placeholder="Any additional payment details..."
+                />
+              </div>
+
+              <button
+                onClick={markCompleted}
+                disabled={saving}
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Mark as Completed'}
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className={`rounded-2xl p-4 ${isCompleted ? 'bg-slate-800' : 'bg-slate-800/50'} ${!isCompleted ? 'opacity-75' : ''}`}>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-white font-semibold">{shift.position}</h3>
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  isCompleted ? 'bg-green-500/20 text-green-400' :
+                  shift.status === 'filled' ? 'bg-blue-500/20 text-blue-400' :
+                  shift.status === 'cancelled' ? 'bg-red-500/20 text-red-400' :
+                  'bg-yellow-500/20 text-yellow-400'
+                }`}>
+                  {isCompleted ? 'Completed' : shift.status}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center gap-4 text-sm">
+                <span className="text-slate-400">📅 {formatDate(shift.shift_date)}</span>
+                <span className="text-slate-400">${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}</span>
+              </div>
+              {shift.filled_by && (
+                <p className="text-slate-400 text-sm mt-1">Worker ID: {shift.filled_by}</p>
+              )}
+              {isCompleted && (
+                <div className="mt-3 pt-3 border-t border-slate-700">
+                  {(paymentMethod || amountPaid || paymentNotes) && (
+                    <>
+                      {paymentMethod && (
+                        <p className="text-slate-300 text-sm">💳 Payment Method: {paymentMethod}</p>
+                      )}
+                      {amountPaid && (
+                        <p className="text-slate-300 text-sm">💰 Amount Paid: ${parseFloat(amountPaid).toFixed(2)}</p>
+                      )}
+                      {paymentNotes && (
+                        <p className="text-slate-400 text-xs mt-1">📝 {paymentNotes}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            {!isCompleted && shift.status === 'filled' && (
+              <button
+                onClick={() => setShowPaymentForm(true)}
+                className="ml-4 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-semibold text-sm"
+              >
+                Mark Paid
+              </button>
+            )}
+          </div>
         </div>
       );
     }
