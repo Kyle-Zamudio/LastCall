@@ -222,6 +222,13 @@
         setLoading(true);
         setError('');
 
+        // Validate password on signup
+        if (mode === 'signup' && password.length < 6) {
+          setError('Password must be at least 6 characters');
+          setLoading(false);
+          return;
+        }
+
         try {
           const passwordHash = await hashPassword(password);
 
@@ -244,7 +251,7 @@
               if (insertError.code === '23505') {
                 setError('Email already registered. Please log in.');
               } else {
-                setError(insertError.message);
+                setError(insertError.message || 'Failed to create account. Please try again.');
               }
               setLoading(false);
               return;
@@ -275,8 +282,8 @@
           }
         } catch (err) {
           setError('Something went wrong. Please try again.');
+          setLoading(false);
         }
-        setLoading(false);
       };
 
       return (
@@ -441,6 +448,13 @@
         setLoading(true);
         setError('');
 
+        // Validate password on signup
+        if (mode === 'signup' && password.length < 6) {
+          setError('Password must be at least 6 characters');
+          setLoading(false);
+          return;
+        }
+
         try {
           const passwordHash = await hashPassword(password);
 
@@ -471,7 +485,7 @@
               if (insertError.code === '23505') {
                 setError('Email already registered. Please log in.');
               } else {
-                setError(insertError.message);
+                setError(insertError.message || 'Failed to create profile. Please try again.');
               }
               setLoading(false);
               return;
@@ -502,8 +516,8 @@
           }
         } catch (err) {
           setError('Something went wrong. Please try again.');
+          setLoading(false);
         }
-        setLoading(false);
       };
 
       return (
@@ -999,20 +1013,20 @@
 
       // Request notification permission on mount
       useEffect(() => {
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
+        if ('Notification' in window) {
+          if (Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+              if (permission === 'granted') {
+                console.log('Notification permission granted for business');
+              }
+            });
+          } else if (Notification.permission === 'denied') {
+            console.log('Notification permission denied for business');
+          }
         }
       }, []);
 
-      useEffect(() => {
-        loadShifts();
-        
-        // Poll for new interests every 30 seconds
-        const interval = setInterval(checkForNewInterests, 30000);
-        return () => clearInterval(interval);
-      }, []);
-
-      const checkForNewInterests = async () => {
+      const checkForNewInterests = React.useCallback(async () => {
         // Get total interest count for all open shifts
         const { data: openShifts } = await supabase
           .from('shifts')
@@ -1020,36 +1034,62 @@
           .eq('business_id', user.id)
           .eq('status', 'open');
         
-        console.log('Open shifts:', openShifts);
-        
-        if (!openShifts || openShifts.length === 0) return;
+        if (!openShifts || openShifts.length === 0) {
+          knownInterestCountRef.current = 0;
+          return;
+        }
         
         const shiftIds = openShifts.map(s => s.id);
-        const { count } = await supabase
+        const { count, error } = await supabase
           .from('interests')
           .select('*', { count: 'exact', head: true })
           .in('shift_id', shiftIds);
         
-        console.log('Interest count:', count, 'Known count:', knownInterestCountRef.current);
+        if (error) {
+          console.error('Error checking interests:', error);
+          return;
+        }
         
-        if (count > knownInterestCountRef.current && knownInterestCountRef.current >= 0) {
+        const currentCount = count || 0;
+        
+        if (currentCount > knownInterestCountRef.current && knownInterestCountRef.current >= 0) {
           // New interest!
-          const newCount = count - knownInterestCountRef.current;
+          const newCount = currentCount - knownInterestCountRef.current;
           setNewInterestAlert(`${newCount} new worker${newCount > 1 ? 's' : ''} interested!`);
           
           // Browser notification
           if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('LastCall', {
-              body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest in your shift!`,
-              icon: '📞'
-            });
+            try {
+              new Notification('LastCall', {
+                body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest in your shift!`,
+                icon: '📞',
+                badge: '📞',
+                tag: 'new-interest'
+              });
+            } catch (err) {
+              console.error('Notification error:', err);
+            }
           }
+          
+          // Reload shifts to show new interests
+          loadShifts();
           
           // Auto-dismiss after 5 seconds
           setTimeout(() => setNewInterestAlert(null), 5000);
         }
-        knownInterestCountRef.current = count || 0;
-      };
+        knownInterestCountRef.current = currentCount;
+      }, [user.id]);
+
+      useEffect(() => {
+        loadShifts();
+        
+        // Poll for new interests every 15 seconds for faster notifications
+        const interval = setInterval(() => {
+          checkForNewInterests();
+        }, 15000);
+        
+        return () => clearInterval(interval);
+      }, [checkForNewInterests]);
 
       const loadShifts = async () => {
         const now = new Date();
@@ -1079,14 +1119,18 @@
         // Initialize known interest count
         if (upcoming.length > 0) {
           const shiftIds = upcoming.filter(s => s.status === 'open').map(s => s.id);
-          console.log('Initializing with shift IDs:', shiftIds);
           if (shiftIds.length > 0) {
-            const { count } = await supabase
+            const { count, error } = await supabase
               .from('interests')
               .select('*', { count: 'exact', head: true })
               .in('shift_id', shiftIds);
-            console.log('Initial interest count:', count);
-            knownInterestCountRef.current = count || 0;
+            if (!error) {
+              knownInterestCountRef.current = count || 0;
+            } else {
+              knownInterestCountRef.current = 0;
+            }
+          } else {
+            knownInterestCountRef.current = 0;
           }
         } else {
           knownInterestCountRef.current = 0;
@@ -1268,6 +1312,17 @@
           return;
         }
 
+        // Validate same-day shifts haven't already started
+        if (shiftDate === today) {
+          const now = new Date();
+          const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
+          if (startTime <= currentTime) {
+            setError('Cannot post a shift that has already started today');
+            setLoading(false);
+            return;
+          }
+        }
+
         // Validate end time is after start time
         if (endTime <= startTime) {
           setError('End time must be after start time');
@@ -1275,27 +1330,46 @@
           return;
         }
 
-        const { error: insertError } = await supabase
-          .from('shifts')
-          .insert([{
-            business_id: user.id,
-            position,
-            shift_date: shiftDate,
-            start_time: startTime,
-            end_time: endTime,
-            hourly_rate: parseFloat(hourlyRate),
-            tips_included: tipsIncluded,
-            notes,
-            status: 'open'
-          }]);
-
-        if (insertError) {
-          setError(insertError.message);
+        // Validate hourly rate
+        const rate = parseFloat(hourlyRate);
+        if (isNaN(rate) || rate < 0) {
+          setError('Please enter a valid hourly rate');
           setLoading(false);
           return;
         }
 
-        onSuccess();
+        if (!tipsIncluded && rate < 7.25) {
+          setError('Hourly rate must be at least minimum wage ($7.25/hr) unless tips are included');
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const { error: insertError } = await supabase
+            .from('shifts')
+            .insert([{
+              business_id: user.id,
+              position,
+              shift_date: shiftDate,
+              start_time: startTime,
+              end_time: endTime,
+              hourly_rate: rate,
+              tips_included: tipsIncluded,
+              notes,
+              status: 'open'
+            }]);
+
+          if (insertError) {
+            setError(insertError.message || 'Failed to post shift. Please try again.');
+            setLoading(false);
+            return;
+          }
+
+          onSuccess();
+        } catch (err) {
+          setError('An unexpected error occurred. Please try again.');
+          setLoading(false);
+        }
       };
 
       return (
@@ -1371,10 +1445,13 @@
                   onChange={(e) => setHourlyRate(e.target.value)}
                   className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                   min="0"
-                  step="0.50"
-                  placeholder={tipsIncluded ? "2.13" : "25.00"}
+                  step="0.01"
+                  placeholder={tipsIncluded ? "2.13 (tipped minimum)" : "25.00"}
                   required
                 />
+                {!tipsIncluded && parseFloat(hourlyRate) < 7.25 && hourlyRate && (
+                  <p className="text-yellow-400 text-xs mt-1">⚠ Minimum wage is $7.25/hr</p>
+                )}
               </div>
 
               <div className="flex items-center justify-between bg-slate-700 p-4 rounded-xl">
@@ -1619,6 +1696,17 @@
           return;
         }
 
+        // Validate same-day shifts haven't already started
+        if (shiftDate === today) {
+          const now = new Date();
+          const currentTime = now.toTimeString().slice(0, 5);
+          if (startTime <= currentTime) {
+            setEditError('Cannot edit a shift that has already started today');
+            setSaving(false);
+            return;
+          }
+        }
+
         // Validate end time is after start time
         if (endTime <= startTime) {
           setEditError('End time must be after start time');
@@ -1626,24 +1714,48 @@
           return;
         }
 
-        const { data, error } = await supabase
-          .from('shifts')
-          .update({
-            position,
-            shift_date: shiftDate,
-            start_time: startTime,
-            end_time: endTime,
-            hourly_rate: parseFloat(hourlyRate),
-            tips_included: tipsIncluded,
-            notes
-          })
-          .eq('id', shift.id)
-          .select()
-          .single();
-        
-        if (!error && data) {
-          setShift(data);
-          setIsEditing(false);
+        // Validate hourly rate
+        const rate = parseFloat(hourlyRate);
+        if (isNaN(rate) || rate < 0) {
+          setEditError('Please enter a valid hourly rate');
+          setSaving(false);
+          return;
+        }
+
+        if (!tipsIncluded && rate < 7.25) {
+          setEditError('Hourly rate must be at least minimum wage ($7.25/hr) unless tips are included');
+          setSaving(false);
+          return;
+        }
+
+        try {
+          const { data, error } = await supabase
+            .from('shifts')
+            .update({
+              position,
+              shift_date: shiftDate,
+              start_time: startTime,
+              end_time: endTime,
+              hourly_rate: rate,
+              tips_included: tipsIncluded,
+              notes
+            })
+            .eq('id', shift.id)
+            .select()
+            .single();
+          
+          if (error) {
+            setEditError(error.message || 'Failed to update shift. Please try again.');
+            setSaving(false);
+            return;
+          }
+
+          if (data) {
+            setShift(data);
+            setIsEditing(false);
+          }
+        } catch (err) {
+          setEditError('An unexpected error occurred. Please try again.');
         }
         setSaving(false);
       };
@@ -1959,26 +2071,31 @@
 
       // Request notification permission on mount
       useEffect(() => {
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
+        if ('Notification' in window) {
+          if (Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+              if (permission === 'granted') {
+                console.log('Notification permission granted for worker');
+              }
+            });
+          } else if (Notification.permission === 'denied') {
+            console.log('Notification permission denied for worker');
+          }
         }
       }, []);
 
-      useEffect(() => {
-        loadData();
-        
-        // Poll for accepted shifts every 30 seconds
-        const interval = setInterval(checkForAcceptedShifts, 30000);
-        return () => clearInterval(interval);
-      }, []);
-
-      const checkForAcceptedShifts = async () => {
+      const checkForAcceptedShifts = React.useCallback(async () => {
         // Check for accepted interests
-        const { data: acceptedInterests } = await supabase
+        const { data: acceptedInterests, error } = await supabase
           .from('interests')
           .select('id, status')
           .eq('worker_id', user.id)
           .eq('status', 'accepted');
+        
+        if (error) {
+          console.error('Error checking accepted shifts:', error);
+          return;
+        }
         
         const count = acceptedInterests?.length || 0;
         
@@ -1990,10 +2107,16 @@
           
           // Browser notification
           if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('LastCall - You got the shift!', {
-              body: `A business has accepted you for ${newCount} shift${newCount > 1 ? 's' : ''}!`,
-              icon: '🎉'
-            });
+            try {
+              new Notification('LastCall - You got the shift!', {
+                body: `A business has accepted you for ${newCount} shift${newCount > 1 ? 's' : ''}!`,
+                icon: '🎉',
+                badge: '🎉',
+                tag: 'shift-accepted'
+              });
+            } catch (err) {
+              console.error('Notification error:', err);
+            }
           }
           
           // Reload data to show new shift
@@ -2003,7 +2126,18 @@
           setTimeout(() => setAcceptedAlert(null), 8000);
         }
         knownAcceptedCountRef.current = count;
-      };
+      }, [user.id]);
+
+      useEffect(() => {
+        loadData();
+        
+        // Poll for accepted shifts every 15 seconds for faster notifications
+        const interval = setInterval(() => {
+          checkForAcceptedShifts();
+        }, 15000);
+        
+        return () => clearInterval(interval);
+      }, [checkForAcceptedShifts]);
 
       const loadData = async () => {
         const now = new Date();
@@ -2066,9 +2200,20 @@
         setMyAcceptedShifts(upcoming);
         setMyPastShifts(past);
 
-        // Initialize known accepted count
-        const acceptedCount = (interestsData || []).filter(i => i.status === 'accepted').length;
-        knownAcceptedCountRef.current = acceptedCount;
+        // Initialize known accepted count by checking actual accepted interests
+        const { data: acceptedInterests, error: acceptedError } = await supabase
+          .from('interests')
+          .select('id, status')
+          .eq('worker_id', user.id)
+          .eq('status', 'accepted');
+        
+        if (!acceptedError) {
+          knownAcceptedCountRef.current = acceptedInterests?.length || 0;
+        } else {
+          // Fallback to interestsData if query fails
+          const acceptedCount = (interestsData || []).filter(i => i.status === 'accepted').length;
+          knownAcceptedCountRef.current = acceptedCount;
+        }
 
         setLoading(false);
       };
