@@ -215,6 +215,7 @@
       const [phone, setPhone] = useState('');
       const [posSystem, setPosSystem] = useState('');
       const [menuNotes, setMenuNotes] = useState('');
+      const [acceptedTerms, setAcceptedTerms] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
 
@@ -226,6 +227,13 @@
         // Validate password on signup
         if (mode === 'signup' && password.length < 6) {
           setError('Password must be at least 6 characters');
+          setLoading(false);
+          return;
+        }
+
+        // Validate terms acceptance on signup
+        if (mode === 'signup' && !acceptedTerms) {
+          setError('You must accept the Terms of Service to create an account');
           setLoading(false);
           return;
         }
@@ -389,12 +397,33 @@
                       placeholder="Describe your menu, signature items, etc."
                     />
                   </div>
+
+                  <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={acceptedTerms}
+                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                        className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500"
+                        required
+                      />
+                      <div className="text-slate-300 text-sm">
+                        <span className="font-semibold">I accept the Terms of Service</span>
+                        <p className="text-slate-400 text-xs mt-1">
+                          I understand that LastCall is a platform connecting businesses with workers. 
+                          I am solely responsible for properly classifying workers (1099 contractor vs W-2 employee), 
+                          tax reporting, and compliance with all employment laws. LastCall is not an employer 
+                          and assumes no liability for employment or tax matters.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                 </>
               )}
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (mode === 'signup' && !acceptedTerms)}
                 className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
               >
                 {loading ? 'Please wait...' : (mode === 'login' ? 'Log In' : 'Create Account')}
@@ -437,6 +466,7 @@
       const [selectedPositions, setSelectedPositions] = useState([]);
       const [yearsExperience, setYearsExperience] = useState('');
       const [selectedCerts, setSelectedCerts] = useState([]);
+      const [acceptedTerms, setAcceptedTerms] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
 
@@ -456,6 +486,13 @@
         // Validate password on signup
         if (mode === 'signup' && password.length < 6) {
           setError('Password must be at least 6 characters');
+          setLoading(false);
+          return;
+        }
+
+        // Validate terms acceptance on signup
+        if (mode === 'signup' && !acceptedTerms) {
+          setError('You must accept the Terms of Service to create an account');
           setLoading(false);
           return;
         }
@@ -665,12 +702,33 @@
                       ))}
                     </div>
                   </div>
+
+                  <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={acceptedTerms}
+                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                        className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500"
+                        required
+                      />
+                      <div className="text-slate-300 text-sm">
+                        <span className="font-semibold">I accept the Terms of Service</span>
+                        <p className="text-slate-400 text-xs mt-1">
+                          I understand that LastCall is a platform connecting workers with businesses. 
+                          I am responsible for my own tax obligations and understand that businesses 
+                          are responsible for proper worker classification. LastCall is not an employer 
+                          and assumes no liability for employment or tax matters.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                 </>
               )}
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (mode === 'signup' && !acceptedTerms)}
                 className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
               >
                 {loading ? 'Please wait...' : (mode === 'login' ? 'Log In' : 'Create Profile')}
@@ -1491,6 +1549,11 @@
                   rows={3}
                   placeholder="Any special requirements or info..."
                 />
+              </div>
+
+              <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-xl p-3 text-xs text-yellow-200">
+                <p className="font-semibold mb-1">⚠️ Employment Classification Notice:</p>
+                <p>You are responsible for properly classifying workers (1099 contractor vs W-2 employee) and complying with all employment and tax laws. LastCall is a platform only and assumes no liability for employment classification or tax matters.</p>
               </div>
 
               <button
