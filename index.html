@@ -1245,11 +1245,27 @@
       const [notes, setNotes] = useState('');
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
+      const today = new Date().toISOString().split('T')[0];
 
       const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
+
+        // Validate date is not in the past
+        const today = new Date().toISOString().split('T')[0];
+        if (shiftDate < today) {
+          setError('Shift date cannot be in the past');
+          setLoading(false);
+          return;
+        }
+
+        // Validate end time is after start time
+        if (endTime <= startTime) {
+          setError('End time must be after start time');
+          setLoading(false);
+          return;
+        }
 
         const { error: insertError } = await supabase
           .from('shifts')
@@ -1310,6 +1326,7 @@
                   type="date"
                   value={shiftDate}
                   onChange={(e) => setShiftDate(e.target.value)}
+                  min={today}
                   className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                   required
                 />
@@ -1534,6 +1551,8 @@
       const [tipsIncluded, setTipsIncluded] = useState(shift.tips_included || false);
       const [notes, setNotes] = useState(shift.notes || '');
       const [saving, setSaving] = useState(false);
+      const [editError, setEditError] = useState('');
+      const today = new Date().toISOString().split('T')[0];
 
       useEffect(() => {
         loadInterests();
@@ -1582,6 +1601,23 @@
 
       const saveEdit = async () => {
         setSaving(true);
+        setEditError('');
+
+        // Validate date is not in the past
+        const today = new Date().toISOString().split('T')[0];
+        if (shiftDate < today) {
+          setEditError('Shift date cannot be in the past');
+          setSaving(false);
+          return;
+        }
+
+        // Validate end time is after start time
+        if (endTime <= startTime) {
+          setEditError('End time must be after start time');
+          setSaving(false);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('shifts')
           .update({
@@ -1686,6 +1722,7 @@
 
             <main className="max-w-lg mx-auto p-4">
               <div className="bg-slate-800 rounded-2xl p-6 space-y-4">
+                {editError && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{editError}</div>}
                 <div>
                   <label className="text-slate-300 text-sm">Position</label>
                   <select
@@ -1703,6 +1740,7 @@
                     type="date"
                     value={shiftDate}
                     onChange={(e) => setShiftDate(e.target.value)}
+                    min={today}
                     className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                   />
                 </div>
