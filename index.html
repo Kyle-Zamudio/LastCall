@@ -995,7 +995,7 @@
       const [selectedShift, setSelectedShift] = useState(null);
       const [loading, setLoading] = useState(true);
       const [newInterestAlert, setNewInterestAlert] = useState(null);
-      const knownInterestCountRef = React.useRef(0);
+      const knownInterestCountRef = React.useRef(-1); // -1 means not initialized yet
 
       // Request notification permission on mount
       useEffect(() => {
@@ -1028,7 +1028,7 @@
           .select('*', { count: 'exact', head: true })
           .in('shift_id', shiftIds);
         
-        if (count > knownInterestCountRef.current && knownInterestCountRef.current > 0) {
+        if (count > knownInterestCountRef.current && knownInterestCountRef.current >= 0) {
           // New interest!
           const newCount = count - knownInterestCountRef.current;
           setNewInterestAlert(`${newCount} new worker${newCount > 1 ? 's' : ''} interested!`);
@@ -1947,7 +1947,7 @@
       const [available, setAvailable] = useState(initialUser.available);
       const [showSettings, setShowSettings] = useState(false);
       const [acceptedAlert, setAcceptedAlert] = useState(null);
-      const knownAcceptedCountRef = React.useRef(0);
+      const knownAcceptedCountRef = React.useRef(-1); // -1 means not initialized yet
 
       // Request notification permission on mount
       useEffect(() => {
@@ -1974,7 +1974,7 @@
         
         const count = acceptedInterests?.length || 0;
         
-        if (count > knownAcceptedCountRef.current && knownAcceptedCountRef.current > 0) {
+        if (count > knownAcceptedCountRef.current && knownAcceptedCountRef.current >= 0) {
           // Newly accepted!
           const newCount = count - knownAcceptedCountRef.current;
           setAcceptedAlert(`🎉 You got ${newCount} shift${newCount > 1 ? 's' : ''}!`);
