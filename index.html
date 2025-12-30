@@ -182,6 +182,26 @@
         return <WorkerDashboard user={user} onLogout={logout} />;
       }
 
+      // Forgot Password - Business
+      if (view === 'forgot-password-business') {
+        return <ForgotPassword userType="business" setView={setView} />;
+      }
+
+      // Forgot Password - Worker
+      if (view === 'forgot-password-worker') {
+        return <ForgotPassword userType="worker" setView={setView} />;
+      }
+
+      // Reset Password - Business
+      if (view === 'reset-password-business') {
+        return <ResetPassword userType="business" setView={setView} />;
+      }
+
+      // Reset Password - Worker
+      if (view === 'reset-password-worker') {
+        return <ResetPassword userType="worker" setView={setView} />;
+      }
+
       return null;
     }
 
@@ -378,6 +398,17 @@
                   {mode === 'login' ? 'Sign up' : 'Log in'}
                 </button>
               </p>
+              {mode === 'login' && (
+                <p className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setView('forgot-password-business')}
+                    className="text-slate-500 hover:text-slate-400 text-sm"
+                  >
+                    Forgot password?
+                  </button>
+                </p>
+              )}
             </form>
           </div>
         </div>
@@ -630,6 +661,321 @@
                   className="text-brand-400 hover:text-brand-300"
                 >
                   {mode === 'login' ? 'Sign up' : 'Log in'}
+                </button>
+              </p>
+              {mode === 'login' && (
+                <p className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setView('forgot-password-worker')}
+                    className="text-slate-500 hover:text-slate-400 text-sm"
+                  >
+                    Forgot password?
+                  </button>
+                </p>
+              )}
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Forgot Password Component
+    function ForgotPassword({ userType, setView }) {
+      const [email, setEmail] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [success, setSuccess] = useState(false);
+      const [resetCode, setResetCode] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        const table = userType === 'business' ? 'businesses' : 'workers';
+        
+        // Check if email exists
+        const { data: user } = await supabase
+          .from(table)
+          .select('id, email')
+          .eq('email', email.toLowerCase())
+          .single();
+
+        if (!user) {
+          setError('No account found with that email');
+          setLoading(false);
+          return;
+        }
+
+        // Generate 6-digit reset code
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
+
+        // Save reset token
+        await supabase
+          .from(table)
+          .update({ reset_token: code, reset_token_expires: expires })
+          .eq('id', user.id);
+
+        setResetCode(code);
+        setSuccess(true);
+        setLoading(false);
+      };
+
+      const backView = userType === 'business' ? 'business-auth' : 'worker-auth';
+
+      if (success) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-center p-6">
+            <div className="w-full max-w-md">
+              <div className="text-center mb-8">
+                <Logo />
+                <h2 className="text-2xl font-bold text-white mt-4">Reset Code Generated</h2>
+              </div>
+
+              <div className="bg-slate-800 rounded-2xl p-6 text-center">
+                <p className="text-slate-300 mb-4">
+                  Your reset code is:
+                </p>
+                <div className="bg-slate-700 rounded-xl p-4 mb-4">
+                  <span className="text-3xl font-mono font-bold text-brand-400 tracking-widest">{resetCode}</span>
+                </div>
+                <p className="text-slate-400 text-sm mb-6">
+                  This code expires in 30 minutes.
+                </p>
+                <button
+                  onClick={() => setView(userType === 'business' ? 'reset-password-business' : 'reset-password-worker')}
+                  className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all"
+                >
+                  Enter Reset Code
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-center p-6">
+          <button onClick={() => setView(backView)} className="absolute top-4 left-4 text-slate-400 hover:text-white flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+
+          <div className="w-full max-w-md">
+            <div className="text-center mb-8">
+              <Logo />
+              <h2 className="text-2xl font-bold text-white mt-4">Reset Password</h2>
+              <p className="text-slate-400 mt-2">Enter your email to get a reset code</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-6 space-y-4">
+              {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
+
+              <div>
+                <label className="text-slate-300 text-sm">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? 'Please wait...' : 'Get Reset Code'}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Reset Password Component
+    function ResetPassword({ userType, setView }) {
+      const [email, setEmail] = useState('');
+      const [code, setCode] = useState('');
+      const [newPassword, setNewPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [success, setSuccess] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        if (newPassword !== confirmPassword) {
+          setError('Passwords do not match');
+          setLoading(false);
+          return;
+        }
+
+        if (newPassword.length < 6) {
+          setError('Password must be at least 6 characters');
+          setLoading(false);
+          return;
+        }
+
+        const table = userType === 'business' ? 'businesses' : 'workers';
+        
+        // Find user with matching email and code
+        const { data: user } = await supabase
+          .from(table)
+          .select('id, reset_token, reset_token_expires')
+          .eq('email', email.toLowerCase())
+          .single();
+
+        if (!user) {
+          setError('No account found with that email');
+          setLoading(false);
+          return;
+        }
+
+        if (user.reset_token !== code) {
+          setError('Invalid reset code');
+          setLoading(false);
+          return;
+        }
+
+        if (new Date(user.reset_token_expires) < new Date()) {
+          setError('Reset code has expired. Please request a new one.');
+          setLoading(false);
+          return;
+        }
+
+        // Update password
+        const passwordHash = await hashPassword(newPassword);
+        await supabase
+          .from(table)
+          .update({ 
+            password_hash: passwordHash, 
+            reset_token: null, 
+            reset_token_expires: null 
+          })
+          .eq('id', user.id);
+
+        setSuccess(true);
+        setLoading(false);
+      };
+
+      const backView = userType === 'business' ? 'business-auth' : 'worker-auth';
+
+      if (success) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-center p-6">
+            <div className="w-full max-w-md">
+              <div className="text-center mb-8">
+                <Logo />
+                <h2 className="text-2xl font-bold text-white mt-4">Password Reset!</h2>
+              </div>
+
+              <div className="bg-slate-800 rounded-2xl p-6 text-center">
+                <div className="text-green-400 text-5xl mb-4">✓</div>
+                <p className="text-slate-300 mb-6">
+                  Your password has been reset successfully.
+                </p>
+                <button
+                  onClick={() => setView(backView)}
+                  className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all"
+                >
+                  Back to Login
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-center p-6">
+          <button onClick={() => setView(backView)} className="absolute top-4 left-4 text-slate-400 hover:text-white flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+
+          <div className="w-full max-w-md">
+            <div className="text-center mb-8">
+              <Logo />
+              <h2 className="text-2xl font-bold text-white mt-4">Enter Reset Code</h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl p-6 space-y-4">
+              {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
+
+              <div>
+                <label className="text-slate-300 text-sm">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Reset Code</label>
+                <input
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none text-center text-xl tracking-widest"
+                  placeholder="000000"
+                  maxLength={6}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? 'Please wait...' : 'Reset Password'}
+              </button>
+
+              <p className="text-center text-slate-500 text-sm">
+                Don't have a code?{' '}
+                <button
+                  type="button"
+                  onClick={() => setView(userType === 'business' ? 'forgot-password-business' : 'forgot-password-worker')}
+                  className="text-brand-400 hover:text-brand-300"
+                >
+                  Get one here
                 </button>
               </p>
             </form>
