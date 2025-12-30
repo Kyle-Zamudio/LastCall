@@ -703,18 +703,18 @@
                     </div>
                   </div>
 
-                  <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
+                  <div className="bg-slate-700/50 rounded-xl p-4 border-2 border-slate-600">
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={acceptedTerms}
                         onChange={(e) => setAcceptedTerms(e.target.checked)}
-                        className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500"
+                        className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
                         required
                       />
-                      <div className="text-slate-300 text-sm">
-                        <span className="font-semibold">I accept the Terms of Service</span>
-                        <p className="text-slate-400 text-xs mt-1">
+                      <div className="text-slate-300 text-sm flex-1">
+                        <span className="font-semibold text-white">I accept the Terms of Service</span>
+                        <p className="text-slate-400 text-xs mt-2 leading-relaxed">
                           I understand that LastCall is a platform connecting workers with businesses. 
                           I am responsible for my own tax obligations and understand that businesses 
                           are responsible for proper worker classification. LastCall is not an employer 
