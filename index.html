@@ -74,53 +74,15 @@
       const [error, setError] = useState('');
       const [success, setSuccess] = useState('');
 
-      // Navigation function that updates both state and browser history
-      const navigate = (newView, replace = false) => {
-        if (typeof newView !== 'string') return; // Safety check
-        setView(newView);
-        const hash = newView === 'landing' ? '' : `#${newView}`;
-        const url = hash ? `${window.location.pathname}${hash}` : window.location.pathname;
-        if (replace) {
-          window.history.replaceState({ view: newView }, '', url);
-        } else {
-          window.history.pushState({ view: newView }, '', url);
-        }
-      };
-
-      // Initialize view from URL hash
+      // Check for saved session
       useEffect(() => {
-        const hash = window.location.hash.slice(1); // Remove the #
         const savedUser = localStorage.getItem('lastcall_user');
         const savedType = localStorage.getItem('lastcall_type');
-        
         if (savedUser && savedType) {
           setUser(JSON.parse(savedUser));
           setUserType(savedType);
-          const defaultView = savedType === 'business' ? 'business-dashboard' : 'worker-dashboard';
-          const initialView = hash || defaultView;
-          setView(initialView);
-          // Set initial history state
-          window.history.replaceState({ view: initialView }, '', hash ? `#${initialView}` : window.location.pathname);
-        } else if (hash) {
-          setView(hash);
-          window.history.replaceState({ view: hash }, '', `#${hash}`);
-        } else {
-          // No hash and no saved session - go to landing
-          setView('landing');
-          window.history.replaceState({ view: 'landing' }, '', window.location.pathname);
+          setView(savedType === 'business' ? 'business-dashboard' : 'worker-dashboard');
         }
-      }, []);
-
-      // Handle browser back/forward buttons
-      useEffect(() => {
-        const handlePopState = (event) => {
-          const hash = window.location.hash.slice(1);
-          const newView = hash || 'landing';
-          setView(newView);
-        };
-
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
       }, []);
 
       const logout = () => {
@@ -128,7 +90,7 @@
         localStorage.removeItem('lastcall_type');
         setUser(null);
         setUserType(null);
-        navigate('landing', true); // Replace history so they can't go back to dashboard
+        setView('landing');
       };
 
       // Landing Page
@@ -145,7 +107,7 @@
             
             <div className="w-full max-w-md space-y-4">
               <button
-                onClick={() => { setUserType('worker'); navigate('worker-auth'); setAuthMode('login'); }}
+                onClick={() => { setUserType('worker'); setView('worker-auth'); setAuthMode('login'); }}
                 className="w-full bg-white hover:bg-slate-50 text-slate-800 rounded-2xl p-5 flex items-center gap-4 transition-all shadow-xl"
               >
                 <div className="w-12 h-12 bg-slate-200 rounded-xl flex items-center justify-center">
@@ -160,7 +122,7 @@
               </button>
               
               <button
-                onClick={() => { setUserType('business'); navigate('business-auth'); setAuthMode('login'); }}
+                onClick={() => { setUserType('business'); setView('business-auth'); setAuthMode('login'); }}
                 className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-2xl p-5 flex items-center gap-4 transition-all shadow-xl"
               >
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -193,9 +155,9 @@
         return <BusinessAuth 
           mode={authMode} 
           setMode={setAuthMode} 
-          setView={navigate} 
+          setView={setView} 
           setUser={setUser}
-          onBack={() => navigate('landing')}
+          onBack={() => setView('landing')}
         />;
       }
 
@@ -204,9 +166,9 @@
         return <WorkerAuth 
           mode={authMode} 
           setMode={setAuthMode} 
-          setView={navigate} 
+          setView={setView} 
           setUser={setUser}
-          onBack={() => navigate('landing')}
+          onBack={() => setView('landing')}
         />;
       }
 
@@ -222,22 +184,22 @@
 
       // Forgot Password - Business
       if (view === 'forgot-password-business') {
-        return <ForgotPassword userType="business" setView={navigate} />;
+        return <ForgotPassword userType="business" setView={setView} />;
       }
 
       // Forgot Password - Worker
       if (view === 'forgot-password-worker') {
-        return <ForgotPassword userType="worker" setView={navigate} />;
+        return <ForgotPassword userType="worker" setView={setView} />;
       }
 
       // Reset Password - Business
       if (view === 'reset-password-business') {
-        return <ResetPassword userType="business" setView={navigate} />;
+        return <ResetPassword userType="business" setView={setView} />;
       }
 
       // Reset Password - Worker
       if (view === 'reset-password-worker') {
-        return <ResetPassword userType="worker" setView={navigate} />;
+        return <ResetPassword userType="worker" setView={setView} />;
       }
 
       return null;
@@ -298,7 +260,7 @@
             localStorage.setItem('lastcall_user', JSON.stringify(data));
             localStorage.setItem('lastcall_type', 'business');
             setUser(data);
-            setView('business-dashboard', true); // Replace history on login
+            setView('business-dashboard');
           } else {
             const { data, error: selectError } = await supabase
               .from('businesses')
@@ -316,7 +278,7 @@
             localStorage.setItem('lastcall_user', JSON.stringify(data));
             localStorage.setItem('lastcall_type', 'business');
             setUser(data);
-            setView('business-dashboard', true); // Replace history on login
+            setView('business-dashboard');
           }
         } catch (err) {
           setError('Something went wrong. Please try again.');
@@ -451,7 +413,7 @@
                 <p className="text-center">
                   <button
                     type="button"
-                    onClick={() => setView('forgot-password-business', false)}
+                    onClick={() => setView('forgot-password-business')}
                     className="text-slate-500 hover:text-slate-400 text-sm"
                   >
                     Forgot password?
@@ -536,7 +498,7 @@
             localStorage.setItem('lastcall_user', JSON.stringify(data));
             localStorage.setItem('lastcall_type', 'worker');
             setUser(data);
-            setView('worker-dashboard', true); // Replace history on login
+            setView('worker-dashboard');
           } else {
             const { data, error: selectError } = await supabase
               .from('workers')
@@ -554,7 +516,7 @@
             localStorage.setItem('lastcall_user', JSON.stringify(data));
             localStorage.setItem('lastcall_type', 'worker');
             setUser(data);
-            setView('worker-dashboard', true); // Replace history on login
+            setView('worker-dashboard');
           }
         } catch (err) {
           setError('Something went wrong. Please try again.');
@@ -727,7 +689,7 @@
                 <p className="text-center">
                   <button
                     type="button"
-                    onClick={() => setView('forgot-password-worker', false)}
+                    onClick={() => setView('forgot-password-worker')}
                     className="text-slate-500 hover:text-slate-400 text-sm"
                   >
                     Forgot password?
