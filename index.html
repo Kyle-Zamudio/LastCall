@@ -317,6 +317,21 @@
                 />
               </div>
 
+              {mode === 'signup' && (
+                <>
+                  <div>
+                    <label className="text-slate-300 text-sm">Business Name</label>
+                    <input
+                      type="text"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="text-slate-300 text-sm">Password</label>
                 <input
@@ -331,13 +346,12 @@
               {mode === 'signup' && (
                 <>
                   <div>
-                    <label className="text-slate-300 text-sm">Business Name</label>
+                    <label className="text-slate-300 text-sm">Phone</label>
                     <input
-                      type="text"
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
                       className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
-                      required
                     />
                   </div>
 
@@ -349,16 +363,6 @@
                       onChange={(e) => setAddress(e.target.value)}
                       className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                       placeholder="123 Main St, City, State"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-slate-300 text-sm">Phone</label>
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                     />
                   </div>
 
@@ -551,6 +555,21 @@
                 />
               </div>
 
+              {mode === 'signup' && (
+                <>
+                  <div>
+                    <label className="text-slate-300 text-sm">Full Name</label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="text-slate-300 text-sm">Password</label>
                 <input
@@ -564,17 +583,6 @@
 
               {mode === 'signup' && (
                 <>
-                  <div>
-                    <label className="text-slate-300 text-sm">Full Name</label>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
-                      required
-                    />
-                  </div>
-
                   <div>
                     <label className="text-slate-300 text-sm">Phone</label>
                     <input
@@ -2086,7 +2094,10 @@
       const [available, setAvailable] = useState(initialUser.available);
       const [showSettings, setShowSettings] = useState(false);
       const [acceptedAlert, setAcceptedAlert] = useState(null);
+      const [rejectedAlert, setRejectedAlert] = useState(null);
       const knownAcceptedCountRef = React.useRef(-1); // -1 means not initialized yet
+      const knownRejectedCountRef = React.useRef(-1); // -1 means not initialized yet
+      const knownShiftCountRef = React.useRef(-1); // Track shift count for auto-refresh
 
       // Request notification permission on mount
       useEffect(() => {
@@ -2105,22 +2116,21 @@
 
       const checkForAcceptedShifts = React.useCallback(async () => {
         // Check for accepted interests
-        const { data: acceptedInterests, error } = await supabase
+        const { data: acceptedInterests, error: acceptedError } = await supabase
           .from('interests')
           .select('id, status')
           .eq('worker_id', user.id)
           .eq('status', 'accepted');
         
-        if (error) {
-          console.error('Error checking accepted shifts:', error);
-          return;
+        if (acceptedError) {
+          console.error('Error checking accepted shifts:', acceptedError);
         }
         
-        const count = acceptedInterests?.length || 0;
+        const acceptedCount = acceptedInterests?.length || 0;
         
-        if (count > knownAcceptedCountRef.current && knownAcceptedCountRef.current >= 0) {
+        if (acceptedCount > knownAcceptedCountRef.current && knownAcceptedCountRef.current >= 0) {
           // Newly accepted!
-          const newCount = count - knownAcceptedCountRef.current;
+          const newCount = acceptedCount - knownAcceptedCountRef.current;
           setAcceptedAlert(`🎉 You got ${newCount} shift${newCount > 1 ? 's' : ''}!`);
           setShiftTab('upcoming'); // Switch to upcoming tab
           
@@ -2144,19 +2154,127 @@
           // Auto-dismiss after 8 seconds
           setTimeout(() => setAcceptedAlert(null), 8000);
         }
-        knownAcceptedCountRef.current = count;
+        knownAcceptedCountRef.current = acceptedCount;
+
+        // Check for rejected interests
+        const { data: rejectedInterests, error: rejectedError } = await supabase
+          .from('interests')
+          .select(`
+            id, 
+            status,
+            shift:shifts(id, position, shift_date)
+          `)
+          .eq('worker_id', user.id)
+          .eq('status', 'rejected');
+        
+        if (rejectedError) {
+          console.error('Error checking rejected shifts:', rejectedError);
+        }
+        
+        const rejectedCount = rejectedInterests?.length || 0;
+        
+        if (rejectedCount > knownRejectedCountRef.current && knownRejectedCountRef.current >= 0) {
+          // Newly rejected!
+          const newRejectedCount = rejectedCount - knownRejectedCountRef.current;
+          const shiftInfo = rejectedInterests[0]?.shift;
+          const shiftText = shiftInfo ? ` for ${shiftInfo.position} shift` : '';
+          setRejectedAlert(`❌ Someone else was picked${shiftText}. Keep looking!`);
+          
+          // Browser notification
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall - Shift Filled', {
+                body: `A business picked someone else${shiftText}. Don't worry, more shifts are available!`,
+                icon: '❌',
+                badge: '❌',
+                tag: 'shift-rejected'
+              });
+            } catch (err) {
+              console.error('Notification error:', err);
+            }
+          }
+          
+          // Reload data to update status
+          loadData();
+          
+          // Auto-dismiss after 10 seconds
+          setTimeout(() => setRejectedAlert(null), 10000);
+        }
+        knownRejectedCountRef.current = rejectedCount;
       }, [user.id]);
+
+      const checkForNewShifts = React.useCallback(async () => {
+        // Check for new shifts that match worker's positions
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const currentTime = now.toTimeString().slice(0, 5);
+
+        const shiftHasEnded = (shift) => {
+          if (shift.shift_date < today) return true;
+          if (shift.shift_date === today && shift.end_time <= currentTime) return true;
+          return false;
+        };
+
+        const { data: shiftsData, error } = await supabase
+          .from('shifts')
+          .select('id, position, shift_date, end_time')
+          .eq('status', 'open')
+          .gte('shift_date', today)
+          .order('shift_date', { ascending: true });
+
+        if (error) {
+          console.error('Error checking for new shifts:', error);
+          return;
+        }
+
+        const filtered = (shiftsData || []).filter(shift => 
+          user.positions?.includes(shift.position) && !shiftHasEnded(shift)
+        );
+
+        const currentShiftCount = filtered.length;
+
+        // If new shifts appeared, reload data and show notification
+        if (currentShiftCount > knownShiftCountRef.current && knownShiftCountRef.current >= 0) {
+          const newShiftCount = currentShiftCount - knownShiftCountRef.current;
+          
+          // Browser notification for new shifts
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall - New Shifts Available!', {
+                body: `${newShiftCount} new shift${newShiftCount > 1 ? 's' : ''} available!`,
+                icon: '📋',
+                badge: '📋',
+                tag: 'new-shifts'
+              });
+            } catch (err) {
+              console.error('Notification error:', err);
+            }
+          }
+          
+          loadData();
+        }
+        
+        knownShiftCountRef.current = currentShiftCount;
+      }, [user.positions]);
 
       useEffect(() => {
         loadData();
         
-        // Poll for accepted shifts every 15 seconds for faster notifications
-        const interval = setInterval(() => {
+        // Poll for accepted/rejected shifts every 15 seconds
+        const statusInterval = setInterval(() => {
           checkForAcceptedShifts();
         }, 15000);
         
-        return () => clearInterval(interval);
-      }, [checkForAcceptedShifts]);
+        // Poll for new shifts every 20 seconds
+        const shiftInterval = setInterval(() => {
+          checkForNewShifts();
+        }, 20000);
+        
+        return () => {
+          clearInterval(statusInterval);
+          clearInterval(shiftInterval);
+        };
+      }, [checkForAcceptedShifts, checkForNewShifts]);
 
       const loadData = async () => {
         const now = new Date();
@@ -2185,6 +2303,15 @@
         const filtered = (shiftsData || []).filter(shift => 
           user.positions?.includes(shift.position) && !shiftHasEnded(shift)
         );
+        
+        // Update shift count for auto-refresh tracking
+        if (knownShiftCountRef.current >= 0 && filtered.length > knownShiftCountRef.current) {
+          // New shifts available - will be handled by checkForNewShifts
+          knownShiftCountRef.current = filtered.length;
+        } else if (knownShiftCountRef.current < 0) {
+          // Initial load
+          knownShiftCountRef.current = filtered.length;
+        }
 
         // Sort by POS match
         const sorted = filtered.sort((a, b) => {
@@ -2233,6 +2360,23 @@
           const acceptedCount = (interestsData || []).filter(i => i.status === 'accepted').length;
           knownAcceptedCountRef.current = acceptedCount;
         }
+
+        // Initialize known rejected count
+        const { data: rejectedInterests, error: rejectedError } = await supabase
+          .from('interests')
+          .select('id, status')
+          .eq('worker_id', user.id)
+          .eq('status', 'rejected');
+        
+        if (!rejectedError) {
+          knownRejectedCountRef.current = rejectedInterests?.length || 0;
+        } else {
+          const rejectedCount = (interestsData || []).filter(i => i.status === 'rejected').length;
+          knownRejectedCountRef.current = rejectedCount;
+        }
+
+        // Initialize known shift count for auto-refresh
+        knownShiftCountRef.current = filtered.length;
 
         setLoading(false);
       };
@@ -2320,6 +2464,14 @@
             <div className="bg-green-500 text-white text-center py-3 px-4 font-semibold animate-pulse">
               {acceptedAlert}
               <button onClick={() => setAcceptedAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
+            </div>
+          )}
+
+          {/* Rejected Shift Alert */}
+          {rejectedAlert && (
+            <div className="bg-orange-500 text-white text-center py-3 px-4 font-semibold">
+              {rejectedAlert}
+              <button onClick={() => setRejectedAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
             </div>
           )}
 
