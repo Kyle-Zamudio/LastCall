@@ -1816,6 +1816,17 @@
         }
       };
 
+      // Check if shift has ended
+      const shiftHasEnded = () => {
+        if (!shift || !shift.shift_date || !shift.end_time) return false;
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const currentTime = now.toTimeString().slice(0, 5);
+        if (shift.shift_date < today) return true;
+        if (shift.shift_date === today && shift.end_time <= currentTime) return true;
+        return false;
+      };
+
       const acceptWorker = async (interest) => {
         await supabase
           .from('shifts')
@@ -3124,9 +3135,9 @@
                 </div>
               </div>
 
-              <div>
-                <label className="text-slate-300 text-sm mb-2 block">Preferred Payment Methods (select all that apply)</label>
-                <p className="text-slate-400 text-xs mb-2">Let businesses know how you prefer to be paid</p>
+              <div className="mt-4">
+                <label className="text-slate-300 text-sm mb-2 block font-semibold">Preferred Payment Methods</label>
+                <p className="text-slate-400 text-xs mb-3">Select all that apply - Let businesses know how you prefer to be paid</p>
                 <div className="flex flex-wrap gap-2">
                   {PAYMENT_METHODS.map(method => (
                     <button
