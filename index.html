@@ -1035,6 +1035,8 @@
           .eq('status', 'open');
         
         if (!openShifts || openShifts.length === 0) {
+          // No open shifts, hide alert
+          setNewInterestAlert(null);
           knownInterestCountRef.current = 0;
           return;
         }
@@ -1052,16 +1054,22 @@
         
         const currentCount = count || 0;
         
+        // Always show total count if there are any interests
+        if (currentCount > 0) {
+          setNewInterestAlert(`${currentCount} worker${currentCount > 1 ? 's' : ''} interested`);
+        } else {
+          setNewInterestAlert(null);
+        }
+        
+        // Send browser notification only when count increases (new interest)
         if (currentCount > knownInterestCountRef.current && knownInterestCountRef.current >= 0) {
-          // New interest!
           const newCount = currentCount - knownInterestCountRef.current;
-          setNewInterestAlert(`${newCount} new worker${newCount > 1 ? 's' : ''} interested!`);
           
-          // Browser notification
+          // Browser notification for new interest
           if ('Notification' in window && Notification.permission === 'granted') {
             try {
               new Notification('LastCall', {
-                body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest in your shift!`,
+                body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest! Total: ${currentCount}`,
                 icon: '📞',
                 badge: '📞',
                 tag: 'new-interest'
@@ -1073,10 +1081,11 @@
           
           // Reload shifts to show new interests
           loadShifts();
-          
-          // Auto-dismiss after 5 seconds
-          setTimeout(() => setNewInterestAlert(null), 5000);
+        } else if (currentCount > 0) {
+          // Just update the count display, no notification needed
+          loadShifts();
         }
+        
         knownInterestCountRef.current = currentCount;
       }, [user.id]);
 
@@ -1116,7 +1125,7 @@
         setShifts(upcoming);
         setPastShifts(past);
 
-        // Initialize known interest count
+        // Initialize known interest count and set alert if there are interests
         if (upcoming.length > 0) {
           const shiftIds = upcoming.filter(s => s.status === 'open').map(s => s.id);
           if (shiftIds.length > 0) {
@@ -1125,15 +1134,25 @@
               .select('*', { count: 'exact', head: true })
               .in('shift_id', shiftIds);
             if (!error) {
-              knownInterestCountRef.current = count || 0;
+              const interestCount = count || 0;
+              knownInterestCountRef.current = interestCount;
+              // Set alert if there are any interests
+              if (interestCount > 0) {
+                setNewInterestAlert(`${interestCount} worker${interestCount > 1 ? 's' : ''} interested`);
+              } else {
+                setNewInterestAlert(null);
+              }
             } else {
               knownInterestCountRef.current = 0;
+              setNewInterestAlert(null);
             }
           } else {
             knownInterestCountRef.current = 0;
+            setNewInterestAlert(null);
           }
         } else {
           knownInterestCountRef.current = 0;
+          setNewInterestAlert(null);
         }
 
         setLoading(false);
