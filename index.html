@@ -1703,6 +1703,7 @@
       const [loading, setLoading] = useState(true);
       const [isEditing, setIsEditing] = useState(false);
       const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+      const [showPaymentForm, setShowPaymentForm] = useState(false);
       
       // Edit form state
       const [position, setPosition] = useState(shift.position);
@@ -1715,6 +1716,25 @@
       const [saving, setSaving] = useState(false);
       const [editError, setEditError] = useState('');
       const today = new Date().toISOString().split('T')[0];
+      
+      // Payment form state
+      const getPaymentInfo = () => {
+        if (shift.payment_method || shift.amount_paid || shift.payment_notes) {
+          return {
+            method: shift.payment_method || '',
+            amount: shift.amount_paid || '',
+            notes: shift.payment_notes || ''
+          };
+        }
+        return { method: '', amount: '', notes: '' };
+      };
+      const paymentInfo = getPaymentInfo();
+      const [paymentMethod, setPaymentMethod] = useState(paymentInfo.method);
+      const [amountPaid, setAmountPaid] = useState(paymentInfo.amount ? paymentInfo.amount.toString() : '');
+      const [paymentNotes, setPaymentNotes] = useState(paymentInfo.notes);
+      const [isCompleted, setIsCompleted] = useState(shift.completed || false);
+      const [paymentSaving, setPaymentSaving] = useState(false);
+      const [paymentError, setPaymentError] = useState('');
 
       useEffect(() => {
         loadInterests();
@@ -1902,6 +1922,80 @@
         );
       }
 
+      // Payment form mode
+      if (showPaymentForm) {
+        return (
+          <div className="min-h-screen bg-slate-900">
+            <header className="bg-slate-800 border-b border-slate-700 p-4">
+              <div className="max-w-4xl mx-auto flex items-center gap-4">
+                <button onClick={() => setShowPaymentForm(false)} className="text-slate-400 hover:text-white">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h1 className="text-xl font-bold text-white">Mark as Completed & Add Payment</h1>
+              </div>
+            </header>
+
+            <main className="max-w-lg mx-auto p-4">
+              <div className="bg-slate-800 rounded-2xl p-6 space-y-4">
+                {paymentError && <div className="bg-red-500/20 text-red-300 p-3 rounded-lg text-sm">{paymentError}</div>}
+
+                <div>
+                  <label className="text-slate-300 text-sm">Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  >
+                    <option value="">Select payment method</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Venmo">Venmo</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="Zelle">Zelle</option>
+                    <option value="Cash App">Cash App</option>
+                    <option value="Check">Check</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 text-sm">Amount Paid ($)</label>
+                  <input
+                    type="number"
+                    value={amountPaid}
+                    onChange={(e) => setAmountPaid(e.target.value)}
+                    className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 text-sm">Payment Notes (optional)</label>
+                  <textarea
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    rows={2}
+                    placeholder="Any additional payment details..."
+                  />
+                </div>
+
+                <button
+                  onClick={markCompleted}
+                  disabled={paymentSaving}
+                  className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+                >
+                  {paymentSaving ? 'Saving...' : 'Mark as Completed'}
+                </button>
+              </div>
+            </main>
+          </div>
+        );
+      }
+
       // Edit mode
       if (isEditing) {
         return (
@@ -2049,10 +2143,40 @@
                   </button>
                 </div>
               )}
+              {shift.status === 'filled' && shiftHasEnded() && !isCompleted && (
+                <button
+                  onClick={() => setShowPaymentForm(true)}
+                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Mark Paid
+                </button>
+              )}
+              {isCompleted && (paymentMethod || amountPaid || paymentNotes) && (
+                <div className="bg-green-500/20 text-green-400 px-4 py-2 rounded-xl text-sm font-semibold">
+                  ✓ Payment Recorded
+                </div>
+              )}
             </div>
           </header>
 
           <main className="max-w-4xl mx-auto p-4">
+            {isCompleted && (paymentMethod || amountPaid || paymentNotes) && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4 mb-4">
+                <h3 className="text-green-400 font-semibold mb-2">✓ Payment Recorded</h3>
+                {paymentMethod && (
+                  <p className="text-slate-300 text-sm">💳 Payment Method: {paymentMethod}</p>
+                )}
+                {amountPaid && (
+                  <p className="text-slate-300 text-sm">💰 Amount Paid: ${parseFloat(amountPaid).toFixed(2)}</p>
+                )}
+                {paymentNotes && (
+                  <p className="text-slate-400 text-xs mt-1">📝 {paymentNotes}</p>
+                )}
+              </div>
+            )}
             <h2 className="text-lg font-semibold text-white mb-4">
               {shift.status === 'filled' ? 'Shift Filled' : `Interested Workers (${interests.length})`}
             </h2>
