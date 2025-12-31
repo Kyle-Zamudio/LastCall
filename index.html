@@ -2728,6 +2728,7 @@
       const [acceptedAlert, setAcceptedAlert] = useState(null);
       const [rejectedAlert, setRejectedAlert] = useState(null);
       const [cancelledAlert, setCancelledAlert] = useState(null);
+      const [selectedBusiness, setSelectedBusiness] = useState(null);
       const knownAcceptedCountRef = React.useRef(-1); // -1 means not initialized yet
       const knownRejectedCountRef = React.useRef(-1); // -1 means not initialized yet
       const knownShiftCountRef = React.useRef(-1); // Track shift count for auto-refresh
@@ -3256,6 +3257,72 @@
             </div>
           )}
 
+          {/* Business Details Modal */}
+          {selectedBusiness && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedBusiness(null)}>
+              <div className="bg-slate-800 rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-white">{selectedBusiness.business_name}</h2>
+                  <button onClick={() => setSelectedBusiness(null)} className="text-slate-400 hover:text-white">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  {selectedBusiness.address && (
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">📍 Address</p>
+                      <p className="text-white">{selectedBusiness.address}</p>
+                    </div>
+                  )}
+                  
+                  {selectedBusiness.phone && (
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">📞 Phone</p>
+                      <a href={`tel:${selectedBusiness.phone}`} className="text-brand-400 hover:text-brand-300">
+                        {selectedBusiness.phone}
+                      </a>
+                    </div>
+                  )}
+                  
+                  {selectedBusiness.pos_system && (
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">💻 POS System</p>
+                      <p className="text-white">{selectedBusiness.pos_system}</p>
+                    </div>
+                  )}
+                  
+                  {selectedBusiness.menu_url && (
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">🍽️ Menu</p>
+                      <a 
+                        href={selectedBusiness.menu_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-brand-400 hover:text-brand-300 underline break-all"
+                      >
+                        {selectedBusiness.menu_url}
+                      </a>
+                    </div>
+                  )}
+                  
+                  {selectedBusiness.menu_notes && (
+                    <div>
+                      <p className="text-slate-400 text-sm mb-1">📝 Menu Notes</p>
+                      <p className="text-slate-300 text-sm whitespace-pre-wrap">{selectedBusiness.menu_notes}</p>
+                    </div>
+                  )}
+                  
+                  {!selectedBusiness.address && !selectedBusiness.phone && !selectedBusiness.pos_system && !selectedBusiness.menu_url && !selectedBusiness.menu_notes && (
+                    <p className="text-slate-400 text-sm">No additional information available</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <main className="max-w-4xl mx-auto p-4">
             <div className="bg-slate-800 rounded-2xl p-4 mb-6 flex items-center justify-between">
               <div>
@@ -3319,7 +3386,12 @@
                             <h3 className="text-white font-semibold">{shift.position}</h3>
                             <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Confirmed</span>
                           </div>
-                          <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
+                          <button
+                            onClick={() => setSelectedBusiness(shift.business)}
+                            className="text-brand-400 font-semibold hover:text-brand-300 hover:underline text-left"
+                          >
+                            {shift.business?.business_name}
+                          </button>
                           <p className="text-slate-400 text-sm">{shift.business?.address}</p>
                           <div className="mt-2 flex items-center gap-4 text-sm">
                             <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
@@ -3328,15 +3400,6 @@
                               ${shift.hourly_rate}/hr{shift.tips_included && ' + tips'}
                             </span>
                           </div>
-                          {shift.business?.phone && (
-                            <p className="text-slate-400 text-sm mt-2">📞 Contact: {shift.business.phone}</p>
-                          )}
-                          {shift.business?.menu_notes && (
-                            <details className="mt-2">
-                              <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
-                              <p className="text-slate-500 text-sm mt-1 pl-4">{shift.business.menu_notes}</p>
-                            </details>
-                          )}
                         </div>
                       ))}
                     </div>
@@ -3369,7 +3432,12 @@
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-brand-400 font-semibold">{shift.business?.business_name}</p>
+                                <button
+                                  onClick={() => setSelectedBusiness(shift.business)}
+                                  className="text-brand-400 font-semibold hover:text-brand-300 hover:underline text-left"
+                                >
+                                  {shift.business?.business_name}
+                                </button>
                                 <p className="text-slate-400 text-sm">{shift.business?.address}</p>
                                 <div className="mt-2 flex items-center gap-4 text-sm">
                                   <span className="text-slate-300">📅 {formatDate(shift.shift_date)}</span>
@@ -3379,12 +3447,6 @@
                                   </span>
                                 </div>
                                 {shift.notes && <p className="text-slate-500 text-sm mt-2">{shift.notes}</p>}
-                                {shift.business?.menu_notes && (
-                                  <details className="mt-2">
-                                    <summary className="text-slate-400 text-sm cursor-pointer hover:text-slate-300">View menu notes</summary>
-                                    <p className="text-slate-500 text-sm mt-1 pl-4">{shift.business.menu_notes}</p>
-                                  </details>
-                                )}
                               </div>
                               <div>
                                 {interestStatus === 'accepted' ? (
