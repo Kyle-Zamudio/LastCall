@@ -271,6 +271,7 @@
       const [phone, setPhone] = useState('');
       const [posSystem, setPosSystem] = useState('');
       const [menuNotes, setMenuNotes] = useState('');
+      const [menuUrl, setMenuUrl] = useState('');
       const [acceptedTerms, setAcceptedTerms] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
@@ -321,7 +322,8 @@
                 address: address.trim() || null,
                 phone: phone.trim() || null,
                 pos_system: posSystem || null,
-                menu_notes: menuNotes.trim() || null
+                menu_notes: menuNotes.trim() || null,
+                menu_url: menuUrl.trim() || null
               }])
               .select()
               .single();
@@ -472,6 +474,17 @@
                       <option value="">Select POS System</option>
                       {POS_SYSTEMS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">Menu URL (optional)</label>
+                    <input
+                      type="url"
+                      value={menuUrl}
+                      onChange={(e) => setMenuUrl(e.target.value)}
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      placeholder="https://example.com/menu"
+                    />
                   </div>
 
                   <div>
@@ -1784,6 +1797,7 @@
       const [phone, setPhone] = useState(user.phone || '');
       const [posSystem, setPosSystem] = useState(user.pos_system || '');
       const [menuNotes, setMenuNotes] = useState(user.menu_notes || '');
+      const [menuUrl, setMenuUrl] = useState(user.menu_url || '');
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [success, setSuccess] = useState('');
@@ -1801,7 +1815,8 @@
             address,
             phone,
             pos_system: posSystem,
-            menu_notes: menuNotes
+            menu_notes: menuNotes,
+            menu_url: menuUrl.trim() || null
           })
           .eq('id', user.id)
           .select()
@@ -1878,6 +1893,17 @@
                   <option value="">Select POS System</option>
                   {POS_SYSTEMS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
                 </select>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Menu URL (optional)</label>
+                <input
+                  type="url"
+                  value={menuUrl}
+                  onChange={(e) => setMenuUrl(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="https://example.com/menu"
+                />
               </div>
 
               <div>
