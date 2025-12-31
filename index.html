@@ -1994,17 +1994,13 @@
       const isUnfillingRef = React.useRef(false);
 
       useEffect(() => {
-        console.log('[useEffect] ShiftInterests useEffect triggered, shift.id:', shift.id, 'isUnfillingRef.current:', isUnfillingRef.current);
         // Don't load if we're in the middle of unfilling
         if (!isUnfillingRef.current) {
-          console.log('[useEffect] Calling loadInterests');
           loadInterests();
           // Load worker info if shift is filled
           if (shift.filled_by) {
             loadWorkerInfo();
           }
-        } else {
-          console.log('[useEffect] Skipping loadInterests because unfill is in progress');
         }
       }, [shift.id]);
       
@@ -2035,13 +2031,10 @@
       };
 
       const loadInterests = async () => {
-        console.log('[loadInterests] Called, isUnfillingRef.current:', isUnfillingRef.current);
         if (isUnfillingRef.current) {
-          console.log('[loadInterests] Skipping because unfill is in progress');
           return;
         }
         try {
-          console.log('[loadInterests] Loading interests for shift:', shift.id);
           const { data, error } = await supabase
             .from('interests')
             .select(`
@@ -2051,12 +2044,10 @@
             .eq('shift_id', shift.id);
           
           if (error) {
-            console.error('[loadInterests] Error:', error);
             setLoading(false);
             return;
           }
           
-          console.log('[loadInterests] Loaded', data?.length || 0, 'interests');
           // Sort by POS match
           const sorted = (data || []).sort((a, b) => {
             const aMatch = a.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
@@ -2066,10 +2057,8 @@
           
           setInterests(sorted);
         } catch (err) {
-          console.error('[loadInterests] Exception:', err);
           // Error in loadInterests - silently continue
         } finally {
-          console.log('[loadInterests] Finally block - setting loading to false');
           setLoading(false);
         }
       };
@@ -2217,11 +2206,9 @@
 
       const unfillShift = async () => {
         if (!confirm('Are you sure you want to release this worker? The shift will be reopened and they will be notified.')) {
-          console.log('[unfillShift] User cancelled');
           return;
         }
 
-        console.log('[unfillShift] Starting unfill process');
         isUnfillingRef.current = true;
         setLoading(true);
         setError('');
@@ -2229,58 +2216,40 @@
         try {
           // Get the worker ID who was accepted
           const workerId = shift.filled_by;
-          console.log('[unfillShift] Worker ID to release:', workerId);
 
           // Update shift back to open
-          console.log('[unfillShift] Updating shift to open...');
           const { error: shiftError } = await supabase
             .from('shifts')
             .update({ status: 'open', filled_by: null })
             .eq('id', shift.id);
 
           if (shiftError) {
-            console.error('[unfillShift] Error updating shift:', shiftError);
             setError(formatErrorMessage(shiftError));
             setLoading(false);
             isUnfillingRef.current = false;
             return;
           }
-          console.log('[unfillShift] Shift updated successfully');
 
           // Delete the accepted interest so the worker can express interest again if they want
-          console.log('[unfillShift] Deleting accepted interest...');
-          const { error: deleteError } = await supabase
+          await supabase
             .from('interests')
             .delete()
             .eq('shift_id', shift.id)
             .eq('worker_id', workerId)
             .eq('status', 'accepted');
-          
-          if (deleteError) {
-            console.error('[unfillShift] Error deleting interest:', deleteError);
-          } else {
-            console.log('[unfillShift] Interest deleted successfully');
-          }
 
           // Reload shift data
-          console.log('[unfillShift] Reloading shift data...');
-          const { data: updatedShift, error: reloadError } = await supabase
+          const { data: updatedShift } = await supabase
             .from('shifts')
             .select('*')
             .eq('id', shift.id)
             .single();
 
-          if (reloadError) {
-            console.error('[unfillShift] Error reloading shift:', reloadError);
-          } else {
-            console.log('[unfillShift] Shift reloaded:', updatedShift);
-            if (updatedShift) {
-              setShift(updatedShift);
-            }
+          if (updatedShift) {
+            setShift(updatedShift);
           }
 
           // Reload interests directly (without calling loadInterests to avoid loading state conflicts)
-          console.log('[unfillShift] Reloading interests...');
           const { data: interestsData, error: interestsError } = await supabase
             .from('interests')
             .select(`
@@ -2289,32 +2258,22 @@
             `)
             .eq('shift_id', shift.id);
           
-          if (interestsError) {
-            console.error('[unfillShift] Error reloading interests:', interestsError);
-          } else {
-            console.log('[unfillShift] Interests reloaded:', interestsData?.length || 0, 'interests');
-            if (interestsData) {
-              // Sort by POS match
-              const sorted = interestsData.sort((a, b) => {
-                const aMatch = a.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
-                const bMatch = b.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
-                return bMatch - aMatch;
-              });
-              setInterests(sorted);
-            }
+          if (!interestsError && interestsData) {
+            // Sort by POS match
+            const sorted = interestsData.sort((a, b) => {
+              const aMatch = a.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
+              const bMatch = b.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
+              return bMatch - aMatch;
+            });
+            setInterests(sorted);
           }
-          
-          console.log('[unfillShift] All operations completed successfully');
         } catch (err) {
-          console.error('[unfillShift] Exception caught:', err);
           setError(formatErrorMessage(err));
         } finally {
-          console.log('[unfillShift] Finally block - clearing loading state');
           // Always clear loading state
           setLoading(false);
           // Reset the ref after a short delay to allow state updates to complete
           setTimeout(() => {
-            console.log('[unfillShift] Resetting isUnfillingRef');
             isUnfillingRef.current = false;
           }, 100);
         }
