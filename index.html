@@ -350,10 +350,11 @@
             setUser(data);
             setView('business-dashboard');
           } else {
+            // Use case-insensitive email lookup to match password reset behavior
             const { data, error: selectError } = await supabase
               .from('businesses')
               .select('*')
-              .eq('email', email.trim().toLowerCase())
+              .ilike('email', email.trim())
               .eq('password_hash', passwordHash)
               .single();
 
@@ -654,10 +655,11 @@
             setUser(data);
             setView('worker-dashboard');
           } else {
+            // Use case-insensitive email lookup to match password reset behavior
             const { data, error: selectError } = await supabase
               .from('workers')
               .select('*')
-              .eq('email', email.trim().toLowerCase())
+              .ilike('email', email.trim())
               .eq('password_hash', passwordHash)
               .single();
 
