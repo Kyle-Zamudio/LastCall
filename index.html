@@ -1289,29 +1289,42 @@
       }, [checkForNewInterests]);
 
       const loadShifts = async () => {
-        const now = new Date();
-        const today = now.toISOString().split('T')[0];
-        const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
+        try {
+          const now = new Date();
+          const today = now.toISOString().split('T')[0];
+          const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
 
-        // Helper to check if shift has ended
-        const shiftHasEnded = (shift) => {
-          if (shift.shift_date < today) return true;
-          if (shift.shift_date === today && shift.end_time <= currentTime) return true;
-          return false;
-        };
+          // Helper to check if shift has ended
+          const shiftHasEnded = (shift) => {
+            if (shift.shift_date < today) return true;
+            if (shift.shift_date === today && shift.end_time <= currentTime) return true;
+            return false;
+          };
 
-        // Load all shifts for this business
-        const { data } = await supabase
-          .from('shifts')
-          .select('*')
-          .eq('business_id', user.id)
-          .order('shift_date', { ascending: true });
-        
-        const upcoming = (data || []).filter(shift => !shiftHasEnded(shift));
-        const past = (data || []).filter(shift => shiftHasEnded(shift)).reverse();
-        
-        setShifts(upcoming);
-        setPastShifts(past);
+          // Load all shifts for this business
+          const { data, error } = await supabase
+            .from('shifts')
+            .select('*')
+            .eq('business_id', user.id)
+            .order('shift_date', { ascending: true });
+          
+          if (error) {
+            // Continue with empty arrays if error
+            setShifts([]);
+            setPastShifts([]);
+            return;
+          }
+          
+          const upcoming = (data || []).filter(shift => !shiftHasEnded(shift));
+          const past = (data || []).filter(shift => shiftHasEnded(shift)).reverse();
+          
+          setShifts(upcoming);
+          setPastShifts(past);
+        } catch (err) {
+          // Silently handle errors - don't crash the app
+          setShifts([]);
+          setPastShifts([]);
+        }
 
         // Initialize known interest count and set alert if there are interests
         if (upcoming.length > 0) {
