@@ -37,10 +37,64 @@
     
     // Simple hash function for passwords (in production, use proper auth)
     const hashPassword = async (password) => {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password);
-      const hash = await crypto.subtle.digest('SHA-256', data);
-      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+      if (!password) {
+        throw new Error('Password is required');
+      }
+      
+      // Check if crypto.subtle is available (modern browsers)
+      if (window.crypto && window.crypto.subtle) {
+        try {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(password);
+          const hash = await crypto.subtle.digest('SHA-256', data);
+          return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (err) {
+          throw new Error('Password hashing failed. Please try again.');
+        }
+      } else {
+        // Fallback for older browsers (basic hash, not secure but better than nothing)
+        throw new Error('Your browser does not support secure password hashing. Please use a modern browser.');
+      }
+    };
+
+    // Email validation helper
+    const isValidEmail = (email) => {
+      if (!email || !email.trim()) return false;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(email.trim());
+    };
+
+    // Helper to format error messages for users
+    const formatErrorMessage = (error) => {
+      if (!error) return 'An unknown error occurred';
+      
+      // Network errors
+      if (error.message && (
+        error.message.includes('fetch') || 
+        error.message.includes('network') || 
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('NetworkError')
+      )) {
+        return 'Network error. Please check your internet connection and try again.';
+      }
+      
+      // Supabase specific errors
+      if (error.code) {
+        switch (error.code) {
+          case '23505':
+            return 'This email is already registered. Please log in instead.';
+          case '23502':
+            return 'Missing required information. Please fill in all required fields.';
+          case 'PGRST116':
+            return 'No data found. Please try again.';
+          case '42P01':
+            return 'Database error. Please contact support.';
+          default:
+            return error.message || `Error: ${error.code}`;
+        }
+      }
+      
+      return error.message || error.toString() || 'An unexpected error occurred';
     };
 
     // POS Systems list
@@ -226,6 +280,13 @@
         setLoading(true);
         setError('');
 
+        // Validate email format
+        if (!isValidEmail(email)) {
+          setError('Please enter a valid email address');
+          setLoading(false);
+          return;
+        }
+
         // Validate password on signup
         if (mode === 'signup' && password.length < 6) {
           setError('Password must be at least 6 characters');
@@ -254,7 +315,7 @@
             const { data, error: insertError } = await supabase
               .from('businesses')
               .insert([{
-                email: email.trim(),
+                email: email.trim().toLowerCase(),
                 password_hash: passwordHash,
                 business_name: businessName.trim(),
                 address: address.trim() || null,
@@ -266,15 +327,7 @@
               .single();
 
             if (insertError) {
-              if (insertError.code === '23505') {
-                setError('Email already registered. Please log in.');
-              } else if (insertError.code === '23502') {
-                setError('Missing required field. Please fill in all required information.');
-              } else if (insertError.message) {
-                setError(insertError.message);
-              } else {
-                setError(`Failed to create account: ${insertError.code || 'Unknown error'}. Please try again.`);
-              }
+              setError(formatErrorMessage(insertError));
               setLoading(false);
               return;
             }
@@ -285,15 +338,22 @@
               return;
             }
 
-            localStorage.setItem('lastcall_user', JSON.stringify(data));
-            localStorage.setItem('lastcall_type', 'business');
+            try {
+              localStorage.setItem('lastcall_user', JSON.stringify(data));
+              localStorage.setItem('lastcall_type', 'business');
+            } catch (storageError) {
+              setError('Account created but failed to save session. Please try logging in.');
+              setLoading(false);
+              return;
+            }
+
             setUser(data);
             setView('business-dashboard');
           } else {
             const { data, error: selectError } = await supabase
               .from('businesses')
               .select('*')
-              .eq('email', email.trim())
+              .eq('email', email.trim().toLowerCase())
               .eq('password_hash', passwordHash)
               .single();
 
@@ -303,15 +363,20 @@
               return;
             }
 
-            localStorage.setItem('lastcall_user', JSON.stringify(data));
-            localStorage.setItem('lastcall_type', 'business');
+            try {
+              localStorage.setItem('lastcall_user', JSON.stringify(data));
+              localStorage.setItem('lastcall_type', 'business');
+            } catch (storageError) {
+              setError('Login successful but failed to save session. Please try again.');
+              setLoading(false);
+              return;
+            }
+
             setUser(data);
             setView('business-dashboard');
           }
         } catch (err) {
-          // Show the actual error message for debugging
-          const errorMessage = err?.message || err?.toString() || 'Unknown error';
-          setError(`Something went wrong: ${errorMessage}. Please try again or contact support.`);
+          setError(formatErrorMessage(err));
           setLoading(false);
         }
       };
@@ -504,6 +569,13 @@
         setLoading(true);
         setError('');
 
+        // Validate email format
+        if (!isValidEmail(email)) {
+          setError('Please enter a valid email address');
+          setLoading(false);
+          return;
+        }
+
         // Validate password on signup
         if (mode === 'signup' && password.length < 6) {
           setError('Password must be at least 6 characters');
@@ -518,27 +590,41 @@
           return;
         }
 
+        // Validate required fields on signup
+        if (mode === 'signup') {
+          if (!fullName || !fullName.trim()) {
+            setError('Full name is required');
+            setLoading(false);
+            return;
+          }
+          if (selectedPositions.length === 0) {
+            setError('Please select at least one position');
+            setLoading(false);
+            return;
+          }
+          // Validate years experience if provided
+          if (yearsExperience && (isNaN(parseInt(yearsExperience)) || parseInt(yearsExperience) < 0)) {
+            setError('Years of experience must be a valid number (0 or greater)');
+            setLoading(false);
+            return;
+          }
+        }
+
         try {
           const passwordHash = await hashPassword(password);
 
           if (mode === 'signup') {
-            if (selectedPositions.length === 0) {
-              setError('Please select at least one position');
-              setLoading(false);
-              return;
-            }
-
             const { data, error: insertError } = await supabase
               .from('workers')
               .insert([{
-                email,
+                email: email.trim().toLowerCase(),
                 password_hash: passwordHash,
-                full_name: fullName,
-                phone,
-                pos_systems: selectedPOS,
+                full_name: fullName.trim(),
+                phone: phone.trim() || null,
+                pos_systems: selectedPOS.length > 0 ? selectedPOS : null,
                 positions: selectedPositions,
                 years_experience: parseInt(yearsExperience) || 0,
-                certifications: selectedCerts,
+                certifications: selectedCerts.length > 0 ? selectedCerts : null,
                 available: true
               }])
               .select()
@@ -547,22 +633,39 @@
             if (insertError) {
               if (insertError.code === '23505') {
                 setError('Email already registered. Please log in.');
+              } else if (insertError.code === '23502') {
+                setError('Missing required field. Please fill in all required information.');
+              } else if (insertError.message) {
+                setError(insertError.message);
               } else {
-                setError(insertError.message || 'Failed to create profile. Please try again.');
+                setError(`Failed to create profile: ${insertError.code || 'Unknown error'}. Please try again.`);
               }
               setLoading(false);
               return;
             }
 
-            localStorage.setItem('lastcall_user', JSON.stringify(data));
-            localStorage.setItem('lastcall_type', 'worker');
+            if (!data) {
+              setError('Profile created but failed to retrieve data. Please try logging in.');
+              setLoading(false);
+              return;
+            }
+
+            try {
+              localStorage.setItem('lastcall_user', JSON.stringify(data));
+              localStorage.setItem('lastcall_type', 'worker');
+            } catch (storageError) {
+              setError('Account created but failed to save session. Please try logging in.');
+              setLoading(false);
+              return;
+            }
+
             setUser(data);
             setView('worker-dashboard');
           } else {
             const { data, error: selectError } = await supabase
               .from('workers')
               .select('*')
-              .eq('email', email)
+              .eq('email', email.trim().toLowerCase())
               .eq('password_hash', passwordHash)
               .single();
 
@@ -572,13 +675,20 @@
               return;
             }
 
-            localStorage.setItem('lastcall_user', JSON.stringify(data));
-            localStorage.setItem('lastcall_type', 'worker');
+            try {
+              localStorage.setItem('lastcall_user', JSON.stringify(data));
+              localStorage.setItem('lastcall_type', 'worker');
+            } catch (storageError) {
+              setError('Login successful but failed to save session. Please try again.');
+              setLoading(false);
+              return;
+            }
+
             setUser(data);
             setView('worker-dashboard');
           }
         } catch (err) {
-          setError('Something went wrong. Please try again.');
+          setError(formatErrorMessage(err));
           setLoading(false);
         }
       };
@@ -1453,14 +1563,14 @@
             }]);
 
           if (insertError) {
-            setError(insertError.message || 'Failed to post shift. Please try again.');
+            setError(formatErrorMessage(insertError));
             setLoading(false);
             return;
           }
 
           onSuccess();
         } catch (err) {
-          setError('An unexpected error occurred. Please try again.');
+          setError(formatErrorMessage(err));
           setLoading(false);
         }
       };
@@ -3535,3 +3645,4 @@
   </script>
 </body>
 </html>
+
