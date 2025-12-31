@@ -2827,6 +2827,16 @@
           return;
         }
 
+        // Check which interests are already rejected (to avoid duplicate notifications)
+        const { data: rejectedInterests } = await supabase
+          .from('interests')
+          .select('shift_id')
+          .eq('worker_id', user.id)
+          .eq('status', 'rejected')
+          .in('shift_id', interestedShiftIds);
+
+        const rejectedShiftIds = new Set((rejectedInterests || []).map(i => i.shift_id));
+
         // Find shifts that are no longer open (filled, cancelled, or deleted)
         const currentShiftIds = new Set((currentShifts || []).map(s => s.id));
         const filledOrCancelled = (currentShifts || []).filter(s => s.status !== 'open');
@@ -2842,9 +2852,11 @@
         const myAcceptedShiftIds = new Set((myAcceptedShiftsData || []).map(s => s.id));
 
         // Check if any shifts were filled by someone else (not this worker)
+        // BUT skip if the interest is already marked as rejected (to avoid duplicate with rejected alert)
         const newlyFilled = filledOrCancelled.filter(s => 
           s.status === 'filled' && 
-          !myAcceptedShiftIds.has(s.id)
+          !myAcceptedShiftIds.has(s.id) &&
+          !rejectedShiftIds.has(s.id) // Skip if already rejected (will be handled by rejected alert)
         );
 
         // Check if any shifts were cancelled
