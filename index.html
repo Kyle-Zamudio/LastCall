@@ -290,7 +290,8 @@
             setView('business-dashboard');
           }
         } catch (err) {
-          setError('Something went wrong. Please try again.');
+          console.error('Registration error:', err);
+          setError(err.message || 'Something went wrong. Please try again.');
           setLoading(false);
         }
       };
@@ -557,7 +558,8 @@
             setView('worker-dashboard');
           }
         } catch (err) {
-          setError('Something went wrong. Please try again.');
+          console.error('Registration error:', err);
+          setError(err.message || 'Something went wrong. Please try again.');
           setLoading(false);
         }
       };
