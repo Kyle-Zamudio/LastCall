@@ -2216,7 +2216,6 @@
 
           if (shiftError) {
             setError(formatErrorMessage(shiftError));
-            setLoading(false);
             return;
           }
 
@@ -2240,10 +2239,12 @@
           }
 
           // Reload interests (will show other interested workers if any, or be empty)
-          // Await it to ensure it completes, and it will set loading to false in its finally block
+          // loadInterests manages its own loading state in its finally block
           await loadInterests();
         } catch (err) {
           setError(formatErrorMessage(err));
+        } finally {
+          // Always clear loading state, even if loadInterests fails
           setLoading(false);
         }
       };
