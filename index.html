@@ -2196,6 +2196,57 @@
         }
       };
 
+      const unfillShift = async () => {
+        if (!confirm('Are you sure you want to release this worker? The shift will be reopened and they will be notified.')) {
+          return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+          // Get the worker ID who was accepted
+          const workerId = shift.filled_by;
+
+          // Update shift back to open
+          const { error: shiftError } = await supabase
+            .from('shifts')
+            .update({ status: 'open', filled_by: null })
+            .eq('id', shift.id);
+
+          if (shiftError) {
+            setError(formatErrorMessage(shiftError));
+            setLoading(false);
+            return;
+          }
+
+          // Delete the accepted interest so the worker can express interest again if they want
+          await supabase
+            .from('interests')
+            .delete()
+            .eq('shift_id', shift.id)
+            .eq('worker_id', workerId)
+            .eq('status', 'accepted');
+
+          // Reload shift data
+          const { data: updatedShift } = await supabase
+            .from('shifts')
+            .select('*')
+            .eq('id', shift.id)
+            .single();
+
+          if (updatedShift) {
+            setShift(updatedShift);
+            loadInterests();
+          }
+
+          setLoading(false);
+        } catch (err) {
+          setError(formatErrorMessage(err));
+          setLoading(false);
+        }
+      };
+
       const saveEdit = async () => {
         setSaving(true);
         setEditError('');
@@ -2622,9 +2673,23 @@
                 )}
               </div>
             )}
-            <h2 className="text-lg font-semibold text-white mb-4">
-              {shift.status === 'filled' ? 'Shift Filled' : `Interested Workers (${interests.length})`}
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">
+                {shift.status === 'filled' ? 'Shift Filled' : `Interested Workers (${interests.length})`}
+              </h2>
+              {shift.status === 'filled' && !shiftHasEnded() && (
+                <button
+                  onClick={unfillShift}
+                  disabled={loading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Release Worker
+                </button>
+              )}
+            </div>
 
             {loading ? (
               <div className="text-slate-400 text-center py-12">Loading...</div>
@@ -2748,10 +2813,14 @@
       }, []);
 
       const checkForAcceptedShifts = React.useCallback(async () => {
-        // Check for accepted interests
+        // Check for accepted interests with shift details
         const { data: acceptedInterests, error: acceptedError } = await supabase
           .from('interests')
-          .select('id, status')
+          .select(`
+            id, 
+            status,
+            shift:shifts(id, position, shift_date, start_time, end_time)
+          `)
           .eq('worker_id', user.id)
           .eq('status', 'accepted');
         
@@ -2761,7 +2830,72 @@
         
         const acceptedCount = acceptedInterests?.length || 0;
         
-        if (acceptedCount > knownAcceptedCountRef.current && knownAcceptedCountRef.current >= 0) {
+        // Check if we lost an accepted shift (was unfilled by business)
+        if (acceptedCount < knownAcceptedCountRef.current && knownAcceptedCountRef.current > 0) {
+          const formatDate = (date) => new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const formatTime = (time) => {
+            const [h, m] = time.split(':');
+            const hour = parseInt(h);
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            const hour12 = hour % 12 || 12;
+            return `${hour12}:${m} ${ampm}`;
+          };
+
+          // Get current shifts that are filled by this worker
+          const { data: currentAcceptedShifts } = await supabase
+            .from('shifts')
+            .select('id, position, shift_date, start_time, end_time')
+            .eq('filled_by', user.id)
+            .order('shift_date', { ascending: true });
+
+          // Compare with myAcceptedShifts to find which one was released
+          const currentShiftIds = new Set((currentAcceptedShifts || []).map(s => s.id));
+          const previousShiftIds = new Set((myAcceptedShifts || []).map(s => s.id));
+          
+          // Find the shift that was released (in previous but not in current)
+          const releasedShiftId = Array.from(previousShiftIds).find(id => !currentShiftIds.has(id));
+          const releasedShift = myAcceptedShifts?.find(s => s.id === releasedShiftId);
+          
+          const lostCount = knownAcceptedCountRef.current - acceptedCount;
+          
+          let alertMessage = '';
+          let notificationBody = '';
+          
+          if (lostCount === 1 && releasedShift) {
+            const dateStr = formatDate(releasedShift.shift_date);
+            const timeStr = `${formatTime(releasedShift.start_time)} - ${formatTime(releasedShift.end_time)}`;
+            alertMessage = `⚠️ A business released you from the ${releasedShift.position} shift (${dateStr}, ${timeStr}). The shift is now open again.`;
+            notificationBody = `A business released you from the ${releasedShift.position} shift (${dateStr}, ${timeStr}). The shift is now open again.`;
+          } else if (lostCount === 1) {
+            alertMessage = `⚠️ A business released you from 1 shift. The shift is now open again.`;
+            notificationBody = `A business released you from 1 shift. The shift is now open again.`;
+          } else {
+            alertMessage = `⚠️ A business released you from ${lostCount} shifts. The shifts are now open again.`;
+            notificationBody = `A business released you from ${lostCount} shifts. The shifts are now open again.`;
+          }
+
+          setRejectedAlert(alertMessage);
+          
+          // Browser notification
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall - Shift Released', {
+                body: notificationBody,
+                icon: '⚠️',
+                badge: '⚠️',
+                tag: 'shift-released'
+              });
+            } catch (err) {
+              // Notification error - silently continue
+            }
+          }
+          
+          // Reload data to update shift status
+          loadData();
+          
+          // Auto-dismiss after 10 seconds
+          setTimeout(() => setRejectedAlert(null), 10000);
+        } else if (acceptedCount > knownAcceptedCountRef.current && knownAcceptedCountRef.current >= 0) {
           // Newly accepted!
           const newCount = acceptedCount - knownAcceptedCountRef.current;
           setAcceptedAlert(`🎉 You got ${newCount} shift${newCount > 1 ? 's' : ''}!`);
