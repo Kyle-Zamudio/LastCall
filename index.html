@@ -244,16 +244,23 @@
           const passwordHash = await hashPassword(password);
 
           if (mode === 'signup') {
+            // Validate required fields
+            if (!businessName || !businessName.trim()) {
+              setError('Business name is required');
+              setLoading(false);
+              return;
+            }
+
             const { data, error: insertError } = await supabase
               .from('businesses')
               .insert([{
-                email,
+                email: email.trim(),
                 password_hash: passwordHash,
-                business_name: businessName,
-                address,
-                phone,
-                pos_system: posSystem,
-                menu_notes: menuNotes
+                business_name: businessName.trim(),
+                address: address.trim() || null,
+                phone: phone.trim() || null,
+                pos_system: posSystem || null,
+                menu_notes: menuNotes.trim() || null
               }])
               .select()
               .single();
@@ -261,9 +268,19 @@
             if (insertError) {
               if (insertError.code === '23505') {
                 setError('Email already registered. Please log in.');
+              } else if (insertError.code === '23502') {
+                setError('Missing required field. Please fill in all required information.');
+              } else if (insertError.message) {
+                setError(insertError.message);
               } else {
-                setError(insertError.message || 'Failed to create account. Please try again.');
+                setError(`Failed to create account: ${insertError.code || 'Unknown error'}. Please try again.`);
               }
+              setLoading(false);
+              return;
+            }
+
+            if (!data) {
+              setError('Account created but failed to retrieve data. Please try logging in.');
               setLoading(false);
               return;
             }
@@ -276,7 +293,7 @@
             const { data, error: selectError } = await supabase
               .from('businesses')
               .select('*')
-              .eq('email', email)
+              .eq('email', email.trim())
               .eq('password_hash', passwordHash)
               .single();
 
@@ -292,7 +309,9 @@
             setView('business-dashboard');
           }
         } catch (err) {
-          setError('Something went wrong. Please try again.');
+          // Show the actual error message for debugging
+          const errorMessage = err?.message || err?.toString() || 'Unknown error';
+          setError(`Something went wrong: ${errorMessage}. Please try again or contact support.`);
           setLoading(false);
         }
       };
