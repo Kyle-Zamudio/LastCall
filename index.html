@@ -1291,6 +1291,7 @@
       }, [checkForNewInterests]);
 
       const loadShifts = async () => {
+        setLoading(true);
         try {
           const now = new Date();
           const today = now.toISOString().split('T')[0];
@@ -1314,6 +1315,7 @@
             // Continue with empty arrays if error
             setShifts([]);
             setPastShifts([]);
+            setLoading(false);
             return;
           }
           
@@ -1322,27 +1324,26 @@
           
           setShifts(upcoming);
           setPastShifts(past);
-        } catch (err) {
-          // Silently handle errors - don't crash the app
-          setShifts([]);
-          setPastShifts([]);
-        }
 
-        // Initialize known interest count and set alert if there are interests
-        if (upcoming.length > 0) {
-          const shiftIds = upcoming.filter(s => s.status === 'open').map(s => s.id);
-          if (shiftIds.length > 0) {
-            const { count, error } = await supabase
-              .from('interests')
-              .select('*', { count: 'exact', head: true })
-              .in('shift_id', shiftIds);
-            if (!error) {
-              const interestCount = count || 0;
-              knownInterestCountRef.current = interestCount;
-              // Set alert if there are any interests
-              if (interestCount > 0) {
-                setNewInterestAlert(`${interestCount} worker${interestCount > 1 ? 's' : ''} interested`);
+          // Initialize known interest count and set alert if there are interests
+          if (upcoming.length > 0) {
+            const shiftIds = upcoming.filter(s => s.status === 'open').map(s => s.id);
+            if (shiftIds.length > 0) {
+              const { count, error } = await supabase
+                .from('interests')
+                .select('*', { count: 'exact', head: true })
+                .in('shift_id', shiftIds);
+              if (!error) {
+                const interestCount = count || 0;
+                knownInterestCountRef.current = interestCount;
+                // Set alert if there are any interests
+                if (interestCount > 0) {
+                  setNewInterestAlert(`${interestCount} worker${interestCount > 1 ? 's' : ''} interested`);
+                } else {
+                  setNewInterestAlert(null);
+                }
               } else {
+                knownInterestCountRef.current = 0;
                 setNewInterestAlert(null);
               }
             } else {
@@ -1353,12 +1354,15 @@
             knownInterestCountRef.current = 0;
             setNewInterestAlert(null);
           }
-        } else {
+        } catch (err) {
+          // Silently handle errors - don't crash the app
+          setShifts([]);
+          setPastShifts([]);
           knownInterestCountRef.current = 0;
           setNewInterestAlert(null);
+        } finally {
+          setLoading(false);
         }
-
-        setLoading(false);
       };
 
       const updateUser = (updatedUser) => {
