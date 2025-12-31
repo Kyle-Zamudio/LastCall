@@ -2237,10 +2237,11 @@
 
           if (updatedShift) {
             setShift(updatedShift);
-            loadInterests();
           }
 
-          setLoading(false);
+          // Reload interests (will show other interested workers if any, or be empty)
+          // Await it to ensure it completes, and it will set loading to false in its finally block
+          await loadInterests();
         } catch (err) {
           setError(formatErrorMessage(err));
           setLoading(false);
