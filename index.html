@@ -1990,14 +1990,18 @@
       const [paymentSaving, setPaymentSaving] = useState(false);
       const [paymentError, setPaymentError] = useState('');
       const [workerInfo, setWorkerInfo] = useState(null);
+      const isUnfillingRef = React.useRef(false);
 
       useEffect(() => {
-        loadInterests();
-        // Load worker info if shift is filled
-        if (shift.filled_by) {
-          loadWorkerInfo();
+        // Don't load if we're in the middle of unfilling
+        if (!isUnfillingRef.current) {
+          loadInterests();
+          // Load worker info if shift is filled
+          if (shift.filled_by) {
+            loadWorkerInfo();
+          }
         }
-      }, []);
+      }, [shift.id]);
       
       const loadWorkerInfo = async () => {
         try {
@@ -2201,6 +2205,7 @@
           return;
         }
 
+        isUnfillingRef.current = true;
         setLoading(true);
         setError('');
 
@@ -2217,6 +2222,7 @@
           if (shiftError) {
             setError(formatErrorMessage(shiftError));
             setLoading(false);
+            isUnfillingRef.current = false;
             return;
           }
 
@@ -2262,6 +2268,10 @@
         } finally {
           // Always clear loading state
           setLoading(false);
+          // Reset the ref after a short delay to allow state updates to complete
+          setTimeout(() => {
+            isUnfillingRef.current = false;
+          }, 100);
         }
       };
 
