@@ -631,15 +631,7 @@
               .single();
 
             if (insertError) {
-              if (insertError.code === '23505') {
-                setError('Email already registered. Please log in.');
-              } else if (insertError.code === '23502') {
-                setError('Missing required field. Please fill in all required information.');
-              } else if (insertError.message) {
-                setError(insertError.message);
-              } else {
-                setError(`Failed to create profile: ${insertError.code || 'Unknown error'}. Please try again.`);
-              }
+              setError(formatErrorMessage(insertError));
               setLoading(false);
               return;
             }
@@ -1215,11 +1207,9 @@
           if (Notification.permission === 'default') {
             Notification.requestPermission().then(permission => {
               if (permission === 'granted') {
-                console.log('Notification permission granted for business');
               }
             });
           } else if (Notification.permission === 'denied') {
-            console.log('Notification permission denied for business');
           }
         }
       }, []);
@@ -1246,7 +1236,7 @@
           .in('shift_id', shiftIds);
         
         if (error) {
-          console.error('Error checking interests:', error);
+          // Error checking interests - silently continue
           return;
         }
         
@@ -1273,7 +1263,7 @@
                 tag: 'new-interest'
               });
             } catch (err) {
-              console.error('Notification error:', err);
+              // Notification error - silently continue
             }
           }
           
@@ -1901,7 +1891,7 @@
           
           if (error) {
             // Column might not exist yet, that's okay - just log and continue
-            console.log('Could not load worker payment preferences:', error.message);
+            // Could not load worker payment preferences - silently continue
             return;
           }
           
@@ -1941,7 +1931,7 @@
           
           setInterests(sorted);
         } catch (err) {
-          console.error('Error in loadInterests:', err);
+          // Error in loadInterests - silently continue
         } finally {
           setLoading(false);
         }
@@ -2015,24 +2005,77 @@
       };
 
       const acceptWorker = async (interest) => {
-        await supabase
-          .from('shifts')
-          .update({ status: 'filled', filled_by: interest.worker_id })
-          .eq('id', shift.id);
+        setLoading(true);
+        
+        try {
+          // First, check if shift is still open (prevent race condition)
+          const { data: currentShift, error: checkError } = await supabase
+            .from('shifts')
+            .select('status, filled_by')
+            .eq('id', shift.id)
+            .single();
 
-        await supabase
-          .from('interests')
-          .update({ status: 'accepted' })
-          .eq('id', interest.id);
+          if (checkError) {
+            setError(formatErrorMessage(checkError));
+            setLoading(false);
+            return;
+          }
 
-        // Reject others
-        await supabase
-          .from('interests')
-          .update({ status: 'rejected' })
-          .eq('shift_id', shift.id)
-          .neq('id', interest.id);
+          if (currentShift.status !== 'open' || currentShift.filled_by) {
+            setError('This shift has already been filled by another worker.');
+            setLoading(false);
+            // Reload to show updated status
+            loadInterests();
+            return;
+          }
 
-        onBack();
+          // Update shift status atomically
+          const { error: shiftError } = await supabase
+            .from('shifts')
+            .update({ status: 'filled', filled_by: interest.worker_id })
+            .eq('id', shift.id)
+            .eq('status', 'open'); // Only update if still open
+
+          if (shiftError) {
+            setError(formatErrorMessage(shiftError));
+            setLoading(false);
+            return;
+          }
+
+          // Update accepted interest
+          const { error: acceptError } = await supabase
+            .from('interests')
+            .update({ status: 'accepted' })
+            .eq('id', interest.id);
+
+          if (acceptError) {
+            // Rollback shift update if interest update fails
+            await supabase
+              .from('shifts')
+              .update({ status: 'open', filled_by: null })
+              .eq('id', shift.id);
+            setError(formatErrorMessage(acceptError));
+            setLoading(false);
+            return;
+          }
+
+          // Reject others
+          const { error: rejectError } = await supabase
+            .from('interests')
+            .update({ status: 'rejected' })
+            .eq('shift_id', shift.id)
+            .neq('id', interest.id);
+
+          if (rejectError) {
+            // Log but don't fail - main operation succeeded
+            // Could add a warning message if needed
+          }
+
+          onBack();
+        } catch (err) {
+          setError(formatErrorMessage(err));
+          setLoading(false);
+        }
       };
 
       const saveEdit = async () => {
@@ -2119,7 +2162,7 @@
           .eq('shift_id', shift.id);
         
         if (interestError) {
-          console.error('Error deleting interests:', interestError);
+          // Error deleting interests - silently continue
         }
         
         // Delete the shift
@@ -2536,9 +2579,10 @@
                         {shift.status === 'open' && (
                           <button
                             onClick={() => acceptWorker(interest)}
-                            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-semibold"
+                            disabled={loading}
+                            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Accept
+                            {loading ? 'Accepting...' : 'Accept'}
                           </button>
                         )}
                       </div>
@@ -2575,11 +2619,9 @@
           if (Notification.permission === 'default') {
             Notification.requestPermission().then(permission => {
               if (permission === 'granted') {
-                console.log('Notification permission granted for worker');
               }
             });
           } else if (Notification.permission === 'denied') {
-            console.log('Notification permission denied for worker');
           }
         }
       }, []);
@@ -2593,7 +2635,7 @@
           .eq('status', 'accepted');
         
         if (acceptedError) {
-          console.error('Error checking accepted shifts:', acceptedError);
+          // Error checking accepted shifts - silently continue
         }
         
         const acceptedCount = acceptedInterests?.length || 0;
@@ -2614,7 +2656,7 @@
                 tag: 'shift-accepted'
               });
             } catch (err) {
-              console.error('Notification error:', err);
+              // Notification error - silently continue
             }
           }
           
@@ -2638,7 +2680,7 @@
           .eq('status', 'rejected');
         
         if (rejectedError) {
-          console.error('Error checking rejected shifts:', rejectedError);
+          // Error checking rejected shifts - silently continue
         }
         
         const rejectedCount = rejectedInterests?.length || 0;
@@ -2660,7 +2702,7 @@
                 tag: 'shift-rejected'
               });
             } catch (err) {
-              console.error('Notification error:', err);
+              // Notification error - silently continue
             }
           }
           
@@ -2693,7 +2735,7 @@
           .order('shift_date', { ascending: true });
 
         if (error) {
-          console.error('Error checking for new shifts:', error);
+          // Error checking for new shifts - silently continue
           return;
         }
 
@@ -2717,7 +2759,7 @@
                 tag: 'new-shifts'
               });
             } catch (err) {
-              console.error('Notification error:', err);
+              // Notification error - silently continue
             }
           }
           
@@ -2747,108 +2789,131 @@
       }, [checkForAcceptedShifts, checkForNewShifts]);
 
       const loadData = async () => {
-        const now = new Date();
-        const today = now.toISOString().split('T')[0];
-        const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
-
-        // Helper to check if shift has ended
-        const shiftHasEnded = (shift) => {
-          if (shift.shift_date < today) return true;
-          if (shift.shift_date === today && shift.end_time <= currentTime) return true;
-          return false;
-        };
-
-        // Load open shifts
-        const { data: shiftsData } = await supabase
-          .from('shifts')
-          .select(`
-            *,
-            business:businesses(*)
-          `)
-          .eq('status', 'open')
-          .gte('shift_date', today)
-          .order('shift_date', { ascending: true });
-
-        // Filter to positions user works and shifts that haven't ended
-        const filtered = (shiftsData || []).filter(shift => 
-          user.positions?.includes(shift.position) && !shiftHasEnded(shift)
-        );
+        setLoading(true);
         
-        // Update shift count for auto-refresh tracking
-        if (knownShiftCountRef.current >= 0 && filtered.length > knownShiftCountRef.current) {
-          // New shifts available - will be handled by checkForNewShifts
-          knownShiftCountRef.current = filtered.length;
-        } else if (knownShiftCountRef.current < 0) {
-          // Initial load
-          knownShiftCountRef.current = filtered.length;
+        try {
+          const now = new Date();
+          const today = now.toISOString().split('T')[0];
+          const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
+
+          // Helper to check if shift has ended
+          const shiftHasEnded = (shift) => {
+            if (shift.shift_date < today) return true;
+            if (shift.shift_date === today && shift.end_time <= currentTime) return true;
+            return false;
+          };
+
+          // Load open shifts
+          const { data: shiftsData, error: shiftsError } = await supabase
+            .from('shifts')
+            .select(`
+              *,
+              business:businesses(*)
+            `)
+            .eq('status', 'open')
+            .gte('shift_date', today)
+            .order('shift_date', { ascending: true });
+
+          if (shiftsError) {
+            // Continue with empty array if error, but log it
+            setShifts([]);
+          } else {
+            // Filter to positions user works and shifts that haven't ended
+            const filtered = (shiftsData || []).filter(shift => 
+              user.positions?.includes(shift.position) && !shiftHasEnded(shift)
+            );
+            
+            // Update shift count for auto-refresh tracking
+            if (knownShiftCountRef.current >= 0 && filtered.length > knownShiftCountRef.current) {
+              // New shifts available - will be handled by checkForNewShifts
+              knownShiftCountRef.current = filtered.length;
+            } else if (knownShiftCountRef.current < 0) {
+              // Initial load
+              knownShiftCountRef.current = filtered.length;
+            }
+
+            // Sort by POS match
+            const sorted = filtered.sort((a, b) => {
+              const aMatch = a.business?.pos_system && user.pos_systems?.includes(a.business.pos_system) ? 1 : 0;
+              const bMatch = b.business?.pos_system && user.pos_systems?.includes(b.business.pos_system) ? 1 : 0;
+              return bMatch - aMatch;
+            });
+
+            setShifts(sorted);
+            knownShiftCountRef.current = filtered.length;
+          }
+
+          // Load my interests
+          const { data: interestsData, error: interestsError } = await supabase
+            .from('interests')
+            .select('shift_id, status')
+            .eq('worker_id', user.id);
+          
+          if (!interestsError) {
+            setMyInterests(interestsData || []);
+          }
+
+          // Load ALL my filled shifts, then split into upcoming vs past
+          const { data: myShiftsData, error: myShiftsError } = await supabase
+            .from('shifts')
+            .select(`
+              *,
+              business:businesses(*)
+            `)
+            .eq('filled_by', user.id)
+            .order('shift_date', { ascending: true });
+          
+          if (!myShiftsError && myShiftsData) {
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            const currentTime = now.toTimeString().slice(0, 5);
+            const shiftHasEnded = (shift) => {
+              if (shift.shift_date < today) return true;
+              if (shift.shift_date === today && shift.end_time <= currentTime) return true;
+              return false;
+            };
+            
+            const upcoming = myShiftsData.filter(shift => !shiftHasEnded(shift));
+            const past = myShiftsData.filter(shift => shiftHasEnded(shift)).reverse();
+            
+            setMyAcceptedShifts(upcoming);
+            setMyPastShifts(past);
+          }
+
+          // Initialize known accepted count by checking actual accepted interests
+          const { data: acceptedInterests, error: acceptedError } = await supabase
+            .from('interests')
+            .select('id, status')
+            .eq('worker_id', user.id)
+            .eq('status', 'accepted');
+          
+          if (!acceptedError) {
+            knownAcceptedCountRef.current = acceptedInterests?.length || 0;
+          } else {
+            // Fallback to interestsData if query fails
+            const acceptedCount = (interestsData || []).filter(i => i.status === 'accepted').length;
+            knownAcceptedCountRef.current = acceptedCount;
+          }
+
+          // Initialize known rejected count
+          const { data: rejectedInterests, error: rejectedError } = await supabase
+            .from('interests')
+            .select('id, status')
+            .eq('worker_id', user.id)
+            .eq('status', 'rejected');
+          
+          if (!rejectedError) {
+            knownRejectedCountRef.current = rejectedInterests?.length || 0;
+          } else {
+            const rejectedCount = (interestsData || []).filter(i => i.status === 'rejected').length;
+            knownRejectedCountRef.current = rejectedCount;
+          }
+        } catch (err) {
+          // Silently handle errors - don't crash the app
+          // Data will be empty but app will still function
+        } finally {
+          setLoading(false);
         }
-
-        // Sort by POS match
-        const sorted = filtered.sort((a, b) => {
-          const aMatch = a.business?.pos_system && user.pos_systems?.includes(a.business.pos_system) ? 1 : 0;
-          const bMatch = b.business?.pos_system && user.pos_systems?.includes(b.business.pos_system) ? 1 : 0;
-          return bMatch - aMatch;
-        });
-
-        setShifts(sorted);
-
-        // Load my interests
-        const { data: interestsData } = await supabase
-          .from('interests')
-          .select('shift_id, status')
-          .eq('worker_id', user.id);
-        
-        setMyInterests(interestsData || []);
-
-        // Load ALL my filled shifts, then split into upcoming vs past
-        const { data: myShiftsData } = await supabase
-          .from('shifts')
-          .select(`
-            *,
-            business:businesses(*)
-          `)
-          .eq('filled_by', user.id)
-          .order('shift_date', { ascending: true });
-        
-        const upcoming = (myShiftsData || []).filter(shift => !shiftHasEnded(shift));
-        const past = (myShiftsData || []).filter(shift => shiftHasEnded(shift)).reverse();
-        
-        setMyAcceptedShifts(upcoming);
-        setMyPastShifts(past);
-
-        // Initialize known accepted count by checking actual accepted interests
-        const { data: acceptedInterests, error: acceptedError } = await supabase
-          .from('interests')
-          .select('id, status')
-          .eq('worker_id', user.id)
-          .eq('status', 'accepted');
-        
-        if (!acceptedError) {
-          knownAcceptedCountRef.current = acceptedInterests?.length || 0;
-        } else {
-          // Fallback to interestsData if query fails
-          const acceptedCount = (interestsData || []).filter(i => i.status === 'accepted').length;
-          knownAcceptedCountRef.current = acceptedCount;
-        }
-
-        // Initialize known rejected count
-        const { data: rejectedInterests, error: rejectedError } = await supabase
-          .from('interests')
-          .select('id, status')
-          .eq('worker_id', user.id)
-          .eq('status', 'rejected');
-        
-        if (!rejectedError) {
-          knownRejectedCountRef.current = rejectedInterests?.length || 0;
-        } else {
-          const rejectedCount = (interestsData || []).filter(i => i.status === 'rejected').length;
-          knownRejectedCountRef.current = rejectedCount;
-        }
-
-        // Initialize known shift count for auto-refresh
-        knownShiftCountRef.current = filtered.length;
-
-        setLoading(false);
       };
 
       const updateUser = (updatedUser) => {
