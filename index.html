@@ -2701,9 +2701,11 @@
       const [showSettings, setShowSettings] = useState(false);
       const [acceptedAlert, setAcceptedAlert] = useState(null);
       const [rejectedAlert, setRejectedAlert] = useState(null);
+      const [cancelledAlert, setCancelledAlert] = useState(null);
       const knownAcceptedCountRef = React.useRef(-1); // -1 means not initialized yet
       const knownRejectedCountRef = React.useRef(-1); // -1 means not initialized yet
       const knownShiftCountRef = React.useRef(-1); // Track shift count for auto-refresh
+      const knownInterestedShiftIdsRef = React.useRef(new Set()); // Track which shifts worker is interested in
 
       // Request notification permission on mount
       useEffect(() => {
@@ -2807,6 +2809,99 @@
         knownRejectedCountRef.current = rejectedCount;
       }, [user.id]);
 
+      const checkForShiftStatusChanges = React.useCallback(async () => {
+        // Check if shifts the worker is interested in have been filled, cancelled, or deleted
+        if (knownInterestedShiftIdsRef.current.size === 0) {
+          return;
+        }
+
+        const interestedShiftIds = Array.from(knownInterestedShiftIdsRef.current);
+        
+        // Get current status of these shifts
+        const { data: currentShifts, error } = await supabase
+          .from('shifts')
+          .select('id, position, status, shift_date')
+          .in('id', interestedShiftIds);
+
+        if (error) {
+          return;
+        }
+
+        // Find shifts that are no longer open (filled, cancelled, or deleted)
+        const currentShiftIds = new Set((currentShifts || []).map(s => s.id));
+        const filledOrCancelled = (currentShifts || []).filter(s => s.status !== 'open');
+        const deleted = interestedShiftIds.filter(id => !currentShiftIds.has(id));
+
+        // Get worker's accepted shifts to check if they got the shift
+        const { data: myAcceptedShiftsData } = await supabase
+          .from('shifts')
+          .select('id')
+          .eq('filled_by', user.id)
+          .in('id', interestedShiftIds);
+
+        const myAcceptedShiftIds = new Set((myAcceptedShiftsData || []).map(s => s.id));
+
+        // Check if any shifts were filled by someone else (not this worker)
+        const newlyFilled = filledOrCancelled.filter(s => 
+          s.status === 'filled' && 
+          !myAcceptedShiftIds.has(s.id)
+        );
+
+        // Check if any shifts were cancelled
+        const newlyCancelled = filledOrCancelled.filter(s => s.status === 'cancelled');
+
+        // Show alerts for newly filled/cancelled/deleted shifts
+        if (newlyFilled.length > 0 || newlyCancelled.length > 0 || deleted.length > 0) {
+          const messages = [];
+          
+          if (newlyFilled.length > 0) {
+            const shiftText = newlyFilled.length === 1 
+              ? `the ${newlyFilled[0].position} shift`
+              : `${newlyFilled.length} shifts`;
+            messages.push(`❌ ${shiftText} ${newlyFilled.length === 1 ? 'was' : 'were'} filled by someone else`);
+          }
+          
+          if (newlyCancelled.length > 0) {
+            const shiftText = newlyCancelled.length === 1 
+              ? `the ${newlyCancelled[0].position} shift`
+              : `${newlyCancelled.length} shifts`;
+            messages.push(`🚫 ${shiftText} ${newlyCancelled.length === 1 ? 'was' : 'were'} cancelled`);
+          }
+          
+          if (deleted.length > 0) {
+            messages.push(`🗑️ ${deleted.length} shift${deleted.length > 1 ? 's' : ''} ${deleted.length === 1 ? 'was' : 'were'} removed`);
+          }
+
+          if (messages.length > 0) {
+            setCancelledAlert(messages.join('. '));
+            
+            // Browser notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+              try {
+                new Notification('LastCall - Shift Update', {
+                  body: messages.join('. '),
+                  icon: '⚠️',
+                  badge: '⚠️',
+                  tag: 'shift-update'
+                });
+              } catch (err) {
+                // Notification error - silently continue
+              }
+            }
+
+            // Reload data to remove these shifts from the list
+            loadData();
+            
+            // Auto-dismiss after 10 seconds
+            setTimeout(() => setCancelledAlert(null), 10000);
+          }
+
+          // Update known interested shifts - remove the ones that are no longer open
+          filledOrCancelled.forEach(s => knownInterestedShiftIdsRef.current.delete(s.id));
+          deleted.forEach(id => knownInterestedShiftIdsRef.current.delete(id));
+        }
+      }, [user.id]);
+
       const checkForNewShifts = React.useCallback(async () => {
         // Check for new shifts that match worker's positions
         const now = new Date();
@@ -2869,6 +2964,11 @@
           checkForAcceptedShifts();
         }, 15000);
         
+        // Poll for shift status changes (filled/cancelled/deleted) every 15 seconds
+        const statusChangeInterval = setInterval(() => {
+          checkForShiftStatusChanges();
+        }, 15000);
+        
         // Poll for new shifts every 20 seconds
         const shiftInterval = setInterval(() => {
           checkForNewShifts();
@@ -2876,9 +2976,10 @@
         
         return () => {
           clearInterval(statusInterval);
+          clearInterval(statusChangeInterval);
           clearInterval(shiftInterval);
         };
-      }, [checkForAcceptedShifts, checkForNewShifts]);
+      }, [checkForAcceptedShifts, checkForShiftStatusChanges, checkForNewShifts]);
 
       const loadData = async () => {
         setLoading(true);
@@ -2943,6 +3044,9 @@
           
           if (!interestsError) {
             setMyInterests(interestsData || []);
+            // Update known interested shift IDs (only for shifts with pending interest)
+            const pendingInterests = (interestsData || []).filter(i => !i.status || i.status === 'pending');
+            knownInterestedShiftIdsRef.current = new Set(pendingInterests.map(i => i.shift_id));
           }
 
           // Load ALL my filled shifts, then split into upcoming vs past
@@ -3033,6 +3137,8 @@
         await supabase
           .from('interests')
           .insert([{ shift_id: shiftId, worker_id: user.id }]);
+        // Add to known interested shifts
+        knownInterestedShiftIdsRef.current.add(shiftId);
         loadData();
       };
 
@@ -3042,6 +3148,8 @@
           .delete()
           .eq('shift_id', shiftId)
           .eq('worker_id', user.id);
+        // Remove from known interested shifts
+        knownInterestedShiftIdsRef.current.delete(shiftId);
         loadData();
       };
 
@@ -3099,6 +3207,14 @@
             <div className="bg-orange-500 text-white text-center py-3 px-4 font-semibold">
               {rejectedAlert}
               <button onClick={() => setRejectedAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
+            </div>
+          )}
+
+          {/* Cancelled/Filled/Deleted Shift Alert */}
+          {cancelledAlert && (
+            <div className="bg-yellow-600 text-white text-center py-3 px-4 font-semibold">
+              {cancelledAlert}
+              <button onClick={() => setCancelledAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
             </div>
           )}
 
