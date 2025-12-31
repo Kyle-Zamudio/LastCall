@@ -2216,6 +2216,7 @@
 
           if (shiftError) {
             setError(formatErrorMessage(shiftError));
+            setLoading(false);
             return;
           }
 
@@ -2238,13 +2239,28 @@
             setShift(updatedShift);
           }
 
-          // Reload interests (will show other interested workers if any, or be empty)
-          // loadInterests manages its own loading state in its finally block
-          await loadInterests();
+          // Reload interests directly (without calling loadInterests to avoid loading state conflicts)
+          const { data: interestsData, error: interestsError } = await supabase
+            .from('interests')
+            .select(`
+              *,
+              worker:workers(*)
+            `)
+            .eq('shift_id', shift.id);
+          
+          if (!interestsError && interestsData) {
+            // Sort by POS match
+            const sorted = interestsData.sort((a, b) => {
+              const aMatch = a.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
+              const bMatch = b.worker?.pos_systems?.includes(business.pos_system) ? 1 : 0;
+              return bMatch - aMatch;
+            });
+            setInterests(sorted);
+          }
         } catch (err) {
           setError(formatErrorMessage(err));
         } finally {
-          // Always clear loading state, even if loadInterests fails
+          // Always clear loading state
           setLoading(false);
         }
       };
