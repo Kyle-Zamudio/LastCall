@@ -1217,10 +1217,10 @@
       }, []);
 
       const checkForNewInterests = React.useCallback(async () => {
-        // Get total interest count for all open shifts
+        // Get open shifts with their details
         const { data: openShifts } = await supabase
           .from('shifts')
-          .select('id')
+          .select('id, position, shift_date')
           .eq('business_id', user.id)
           .eq('status', 'open');
         
@@ -1232,9 +1232,9 @@
         }
         
         const shiftIds = openShifts.map(s => s.id);
-        const { count, error } = await supabase
+        const { data: interestsData, error } = await supabase
           .from('interests')
-          .select('*', { count: 'exact', head: true })
+          .select('shift_id')
           .in('shift_id', shiftIds);
         
         if (error) {
@@ -1242,11 +1242,42 @@
           return;
         }
         
-        const currentCount = count || 0;
+        const currentCount = interestsData?.length || 0;
         
-        // Always show total count if there are any interests
+        // Group interests by shift to show which positions have interest
+        const interestsByShift = {};
+        (interestsData || []).forEach(interest => {
+          if (!interestsByShift[interest.shift_id]) {
+            interestsByShift[interest.shift_id] = 0;
+          }
+          interestsByShift[interest.shift_id]++;
+        });
+        
+        // Build alert message showing which shifts have interest
         if (currentCount > 0) {
-          setNewInterestAlert(`${currentCount} worker${currentCount > 1 ? 's' : ''} interested`);
+          const shiftsWithInterest = openShifts.filter(s => interestsByShift[s.id] > 0);
+          
+          if (shiftsWithInterest.length === 1) {
+            // Single shift with interest - show position
+            const shift = shiftsWithInterest[0];
+            const count = interestsByShift[shift.id];
+            setNewInterestAlert(`${count} worker${count > 1 ? 's' : ''} interested in ${shift.position} position`);
+          } else {
+            // Multiple shifts with interest - show summary
+            const totalShifts = shiftsWithInterest.length;
+            const positions = [...new Set(shiftsWithInterest.map(s => s.position))];
+            
+            if (positions.length === 1) {
+              // Same position, different dates
+              setNewInterestAlert(`${currentCount} worker${currentCount > 1 ? 's' : ''} interested across ${totalShifts} ${positions[0]} shift${totalShifts > 1 ? 's' : ''}`);
+            } else {
+              // Different positions
+              const positionList = positions.length <= 2 
+                ? positions.join(' and ')
+                : `${positions.slice(0, 2).join(', ')}, and ${positions.length - 2} more`;
+              setNewInterestAlert(`${currentCount} worker${currentCount > 1 ? 's' : ''} interested (${positionList})`);
+            }
+          }
         } else {
           setNewInterestAlert(null);
         }
@@ -1255,11 +1286,21 @@
         if (currentCount > knownInterestCountRef.current && knownInterestCountRef.current >= 0) {
           const newCount = currentCount - knownInterestCountRef.current;
           
+          // Find which shift got the new interest
+          const newInterests = (interestsData || []).slice(-newCount);
+          const newShiftIds = [...new Set(newInterests.map(i => i.shift_id))];
+          const newShifts = openShifts.filter(s => newShiftIds.includes(s.id));
+          const positionText = newShifts.length === 1 
+            ? ` for ${newShifts[0].position} position`
+            : newShifts.length > 0 
+              ? ` across ${newShifts.length} shift${newShifts.length > 1 ? 's' : ''}`
+              : '';
+          
           // Browser notification for new interest
           if ('Notification' in window && Notification.permission === 'granted') {
             try {
               new Notification('LastCall', {
-                body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest! Total: ${currentCount}`,
+                body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest${positionText}! Total: ${currentCount}`,
                 icon: '📞',
                 badge: '📞',
                 tag: 'new-interest'
@@ -1327,18 +1368,50 @@
 
           // Initialize known interest count and set alert if there are interests
           if (upcoming.length > 0) {
-            const shiftIds = upcoming.filter(s => s.status === 'open').map(s => s.id);
+            const openShifts = upcoming.filter(s => s.status === 'open');
+            const shiftIds = openShifts.map(s => s.id);
             if (shiftIds.length > 0) {
-              const { count, error } = await supabase
+              const { data: interestsData, error } = await supabase
                 .from('interests')
-                .select('*', { count: 'exact', head: true })
+                .select('shift_id')
                 .in('shift_id', shiftIds);
               if (!error) {
-                const interestCount = count || 0;
+                const interestCount = interestsData?.length || 0;
                 knownInterestCountRef.current = interestCount;
-                // Set alert if there are any interests
+                
+                // Build alert message showing which shifts have interest
                 if (interestCount > 0) {
-                  setNewInterestAlert(`${interestCount} worker${interestCount > 1 ? 's' : ''} interested`);
+                  const interestsByShift = {};
+                  (interestsData || []).forEach(interest => {
+                    if (!interestsByShift[interest.shift_id]) {
+                      interestsByShift[interest.shift_id] = 0;
+                    }
+                    interestsByShift[interest.shift_id]++;
+                  });
+                  
+                  const shiftsWithInterest = openShifts.filter(s => interestsByShift[s.id] > 0);
+                  
+                  if (shiftsWithInterest.length === 1) {
+                    // Single shift with interest - show position
+                    const shift = shiftsWithInterest[0];
+                    const count = interestsByShift[shift.id];
+                    setNewInterestAlert(`${count} worker${count > 1 ? 's' : ''} interested in ${shift.position} position`);
+                  } else {
+                    // Multiple shifts with interest - show summary
+                    const totalShifts = shiftsWithInterest.length;
+                    const positions = [...new Set(shiftsWithInterest.map(s => s.position))];
+                    
+                    if (positions.length === 1) {
+                      // Same position, different dates
+                      setNewInterestAlert(`${interestCount} worker${interestCount > 1 ? 's' : ''} interested across ${totalShifts} ${positions[0]} shift${totalShifts > 1 ? 's' : ''}`);
+                    } else {
+                      // Different positions
+                      const positionList = positions.length <= 2 
+                        ? positions.join(' and ')
+                        : `${positions.slice(0, 2).join(', ')}, and ${positions.length - 2} more`;
+                      setNewInterestAlert(`${interestCount} worker${interestCount > 1 ? 's' : ''} interested (${positionList})`);
+                    }
+                  }
                 } else {
                   setNewInterestAlert(null);
                 }
