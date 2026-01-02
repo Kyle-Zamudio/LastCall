@@ -566,9 +566,12 @@
       const [selectedPositions, setSelectedPositions] = useState([]);
       const [yearsExperience, setYearsExperience] = useState('');
       const [selectedCerts, setSelectedCerts] = useState([]);
+      const [preferredPaymentMethods, setPreferredPaymentMethods] = useState([]);
       const [acceptedTerms, setAcceptedTerms] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
+
+      const PAYMENT_METHODS = ['Cash', 'Venmo', 'PayPal', 'Zelle', 'Cash App', 'Check', 'Other'];
 
       const toggleSelection = (item, selected, setSelected) => {
         if (selected.includes(item)) {
@@ -639,6 +642,7 @@
                 positions: selectedPositions,
                 years_experience: parseInt(yearsExperience) || 0,
                 certifications: selectedCerts.length > 0 ? selectedCerts : null,
+                preferred_payment_methods: preferredPaymentMethods.length > 0 ? preferredPaymentMethods : null,
                 available: true
               }])
               .select()
@@ -836,6 +840,27 @@
                           }`}
                         >
                           {cert}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="text-slate-300 text-sm mb-2 block font-semibold">Preferred Payment Methods</label>
+                    <p className="text-slate-400 text-xs mb-3">Select all that apply - Let businesses know how you prefer to be paid</p>
+                    <div className="flex flex-wrap gap-2">
+                      {PAYMENT_METHODS.map(method => (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => toggleSelection(method, preferredPaymentMethods, setPreferredPaymentMethods)}
+                          className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                            preferredPaymentMethods.includes(method)
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          {method}
                         </button>
                       ))}
                     </div>
