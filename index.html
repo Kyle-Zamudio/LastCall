@@ -583,6 +583,36 @@
         }
       };
 
+      const togglePOSSelection = (item, selected, setSelected) => {
+        if (item === 'None') {
+          // If clicking "None" and it's already selected, deselect it
+          if (selected.includes('None')) {
+            setSelected([]);
+          } else {
+            // Select only "None" and clear all others
+            setSelected(['None']);
+          }
+        } else {
+          // If clicking any other POS system
+          if (selected.includes('None')) {
+            // If "None" is selected, remove it first, then toggle the clicked item
+            const withoutNone = selected.filter(i => i !== 'None');
+            if (withoutNone.includes(item)) {
+              setSelected(withoutNone.filter(i => i !== item));
+            } else {
+              setSelected([...withoutNone, item]);
+            }
+          } else {
+            // Normal toggle behavior
+            if (selected.includes(item)) {
+              setSelected(selected.filter(i => i !== item));
+            } else {
+              setSelected([...selected, item]);
+            }
+          }
+        }
+      };
+
       const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
