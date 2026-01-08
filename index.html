@@ -1694,6 +1694,7 @@
       const [endTime, setEndTime] = useState('');
       const [hourlyRate, setHourlyRate] = useState('');
       const [tipsIncluded, setTipsIncluded] = useState(false);
+      const [ageRequirement, setAgeRequirement] = useState('18');
       const [notes, setNotes] = useState('');
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
@@ -1755,6 +1756,7 @@
               end_time: endTime,
               hourly_rate: rate,
               tips_included: tipsIncluded,
+              age_requirement: ageRequirement,
               notes,
               status: 'open'
             }]);
@@ -1800,6 +1802,20 @@
                   <option value="">Select position</option>
                   {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
                 </select>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Age Requirement</label>
+                <select
+                  value={ageRequirement}
+                  onChange={(e) => setAgeRequirement(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  required
+                >
+                  <option value="18">18+ (Required)</option>
+                  <option value="21">21+ (For positions like bartender)</option>
+                </select>
+                <p className="text-slate-400 text-xs mt-1">Workers must meet this age requirement to apply</p>
               </div>
 
               <div>
@@ -3442,6 +3458,38 @@
       };
 
       const expressInterest = async (shiftId) => {
+        // First, try to get the shift from the already loaded shifts
+        let shiftData = shifts.find(s => s.id === shiftId);
+        
+        // If not found in loaded shifts, query for it
+        if (!shiftData) {
+          const { data, error: shiftError } = await supabase
+            .from('shifts')
+            .select('age_requirement')
+            .eq('id', shiftId)
+            .single();
+
+          if (shiftError || !data) {
+            // If we can't get shift data, proceed anyway (graceful degradation)
+            await supabase
+              .from('interests')
+              .insert([{ shift_id: shiftId, worker_id: user.id }]);
+            knownInterestedShiftIdsRef.current.add(shiftId);
+            loadData();
+            return;
+          }
+          shiftData = data;
+        }
+
+        // Check if shift requires 21+ and worker is not 21+
+        if (shiftData.age_requirement === '21' && !user.age_21_plus) {
+          // Show error message
+          setRejectedAlert('This position requires workers 21+. You must be 21+ to apply. Update your profile if you meet this requirement.');
+          setTimeout(() => setRejectedAlert(null), 8000);
+          return;
+        }
+
+        // Age requirement met, proceed with interest
         await supabase
           .from('interests')
           .insert([{ shift_id: shiftId, worker_id: user.id }]);
