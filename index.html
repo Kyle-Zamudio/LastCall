@@ -98,7 +98,7 @@
     };
 
     // POS Systems list
-    const POS_SYSTEMS = ['Toast', 'Square', 'Aloha', 'Micros', 'TouchBistro', 'Clover', 'Revel', 'Lightspeed', 'SpotOn', 'Other'];
+    const POS_SYSTEMS = ['Toast', 'Square', 'Aloha', 'Micros', 'TouchBistro', 'Clover', 'Revel', 'Lightspeed', 'SpotOn', 'Other', 'None'];
     const POSITIONS = ['Bartender', 'Server', 'Cook', 'Dishwasher', 'Host', 'Barback'];
     const CERTIFICATIONS = ['TIPS', 'ServSafe', 'Food Handlers Card', 'ABC License', 'None'];
 
@@ -567,6 +567,8 @@
       const [yearsExperience, setYearsExperience] = useState('');
       const [selectedCerts, setSelectedCerts] = useState([]);
       const [preferredPaymentMethods, setPreferredPaymentMethods] = useState([]);
+      const [age18Plus, setAge18Plus] = useState(false);
+      const [age21Plus, setAge21Plus] = useState(false);
       const [acceptedTerms, setAcceptedTerms] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
@@ -596,6 +598,13 @@
         // Validate password on signup
         if (mode === 'signup' && password.length < 6) {
           setError('Password must be at least 6 characters');
+          setLoading(false);
+          return;
+        }
+
+        // Validate age verification on signup
+        if (mode === 'signup' && !age18Plus) {
+          setError('You must be at least 18 years old to create an account');
           setLoading(false);
           return;
         }
@@ -643,6 +652,8 @@
                 years_experience: parseInt(yearsExperience) || 0,
                 certifications: selectedCerts.length > 0 ? selectedCerts : null,
                 preferred_payment_methods: preferredPaymentMethods.length > 0 ? preferredPaymentMethods : null,
+                age_18_plus: age18Plus,
+                age_21_plus: age21Plus,
                 available: true
               }])
               .select()
@@ -812,7 +823,7 @@
                         <button
                           key={pos}
                           type="button"
-                          onClick={() => toggleSelection(pos, selectedPOS, setSelectedPOS)}
+                          onClick={() => togglePOSSelection(pos, selectedPOS, setSelectedPOS)}
                           className={`px-3 py-2 rounded-lg text-sm transition-all ${
                             selectedPOS.includes(pos)
                               ? 'bg-green-500 text-white'
@@ -866,6 +877,42 @@
                     </div>
                   </div>
 
+                  <div className="bg-slate-700/50 rounded-xl p-4 border-2 border-slate-600 space-y-3">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={age18Plus}
+                        onChange={(e) => {
+                          setAge18Plus(e.target.checked);
+                          if (!e.target.checked) {
+                            setAge21Plus(false); // Uncheck 21+ if 18+ is unchecked
+                          }
+                        }}
+                        className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
+                        required
+                      />
+                      <div className="text-slate-300 text-sm flex-1">
+                        <span className="font-semibold text-white">Are you over the age of 18?</span>
+                        <p className="text-slate-400 text-xs mt-1">Required - You must be at least 18 to use LastCall</p>
+                      </div>
+                    </label>
+
+                    {age18Plus && (
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={age21Plus}
+                          onChange={(e) => setAge21Plus(e.target.checked)}
+                          className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
+                        />
+                        <div className="text-slate-300 text-sm flex-1">
+                          <span className="font-semibold text-white">Are you over the age of 21?</span>
+                          <p className="text-slate-400 text-xs mt-1">Optional - Check this if you are 21 or older (required for some positions like bartender)</p>
+                        </div>
+                      </label>
+                    )}
+                  </div>
+
                   <div className="bg-slate-700/50 rounded-xl p-4 border-2 border-slate-600">
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input
@@ -891,7 +938,7 @@
 
               <button
                 type="submit"
-                disabled={loading || (mode === 'signup' && !acceptedTerms)}
+                disabled={loading || (mode === 'signup' && (!age18Plus || !acceptedTerms))}
                 className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
               >
                 {loading ? 'Please wait...' : (mode === 'login' ? 'Log In' : 'Create Profile')}
@@ -3757,6 +3804,36 @@
         }
       };
 
+      const togglePOSSelection = (item, selected, setSelected) => {
+        if (item === 'None') {
+          // If clicking "None" and it's already selected, deselect it
+          if (selected.includes('None')) {
+            setSelected([]);
+          } else {
+            // Select only "None" and clear all others
+            setSelected(['None']);
+          }
+        } else {
+          // If clicking any other POS system
+          if (selected.includes('None')) {
+            // If "None" is selected, remove it first, then toggle the clicked item
+            const withoutNone = selected.filter(i => i !== 'None');
+            if (withoutNone.includes(item)) {
+              setSelected(withoutNone.filter(i => i !== item));
+            } else {
+              setSelected([...withoutNone, item]);
+            }
+          } else {
+            // Normal toggle behavior
+            if (selected.includes(item)) {
+              setSelected(selected.filter(i => i !== item));
+            } else {
+              setSelected([...selected, item]);
+            }
+          }
+        }
+      };
+
       const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -3873,7 +3950,7 @@
                     <button
                       key={pos}
                       type="button"
-                      onClick={() => toggleSelection(pos, selectedPOS, setSelectedPOS)}
+                      onClick={() => togglePOSSelection(pos, selectedPOS, setSelectedPOS)}
                       className={`px-3 py-2 rounded-lg text-sm transition-all ${
                         selectedPOS.includes(pos)
                           ? 'bg-green-500 text-white'
