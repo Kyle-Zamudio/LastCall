@@ -3482,7 +3482,7 @@
         }
 
         // Check if shift requires 21+ and worker is not 21+
-        if (shiftData.age_requirement === '21' && !user.age_21_plus) {
+        if ((shiftData.age_requirement === '21' || shiftData.age_requirement === 21) && !user.age_21_plus) {
           // Show error message
           setRejectedAlert('This position requires workers 21+. You must be 21+ to apply. Update your profile if you meet this requirement.');
           setTimeout(() => setRejectedAlert(null), 8000);
@@ -3743,6 +3743,11 @@
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
                                   <h3 className="text-white font-semibold">{shift.position}</h3>
+                                  {(shift.age_requirement === '21' || shift.age_requirement === 21) && (
+                                    <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded-full">
+                                      21+
+                                    </span>
+                                  )}
                                   {posMatch && (
                                     <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
                                       You know {shift.business.pos_system}!
@@ -3868,6 +3873,8 @@
       const [selectedPositions, setSelectedPositions] = useState(user.positions || []);
       const [selectedCerts, setSelectedCerts] = useState(user.certifications || []);
       const [preferredPaymentMethods, setPreferredPaymentMethods] = useState(user.preferred_payment_methods || []);
+      const [age18Plus, setAge18Plus] = useState(user.age_18_plus || false);
+      const [age21Plus, setAge21Plus] = useState(user.age_21_plus || false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [success, setSuccess] = useState('');
@@ -3918,6 +3925,12 @@
         setError('');
         setSuccess('');
 
+        if (!age18Plus) {
+          setError('You must be at least 18 years old to use LastCall');
+          setLoading(false);
+          return;
+        }
+
         if (selectedPositions.length === 0) {
           setError('Please select at least one position');
           setLoading(false);
@@ -3933,7 +3946,9 @@
             pos_systems: selectedPOS,
             positions: selectedPositions,
             certifications: selectedCerts,
-            preferred_payment_methods: preferredPaymentMethods
+            preferred_payment_methods: preferredPaymentMethods,
+            age_18_plus: age18Plus,
+            age_21_plus: age21Plus
           })
           .eq('id', user.id)
           .select()
@@ -3999,6 +4014,42 @@
                   min="0"
                   max="50"
                 />
+              </div>
+
+              <div className="bg-slate-700/50 rounded-xl p-4 border-2 border-slate-600 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={age18Plus}
+                    onChange={(e) => {
+                      setAge18Plus(e.target.checked);
+                      if (!e.target.checked) {
+                        setAge21Plus(false); // Uncheck 21+ if 18+ is unchecked
+                      }
+                    }}
+                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
+                    required
+                  />
+                  <div className="text-slate-300 text-sm flex-1">
+                    <span className="font-semibold text-white">Are you over the age of 18?</span>
+                    <p className="text-slate-400 text-xs mt-1">Required - You must be at least 18 to use LastCall</p>
+                  </div>
+                </label>
+
+                {age18Plus && (
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={age21Plus}
+                      onChange={(e) => setAge21Plus(e.target.checked)}
+                      className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
+                    />
+                    <div className="text-slate-300 text-sm flex-1">
+                      <span className="font-semibold text-white">Are you over the age of 21?</span>
+                      <p className="text-slate-400 text-xs mt-1">Optional - Check this if you are 21 or older (required for some positions like bartender)</p>
+                    </div>
+                  </label>
+                )}
               </div>
 
               <div>
@@ -4335,6 +4386,11 @@
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-white font-semibold">{shift.position}</h3>
+                {(shift.age_requirement === '21' || shift.age_requirement === 21) && (
+                  <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded-full">
+                    21+
+                  </span>
+                )}
                 {showStatus && (
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     shift.status === 'filled' ? 'bg-green-500/20 text-green-400' :
