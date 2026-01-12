@@ -5,7 +5,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'notifications@lastcallwork.com'
+const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'notifications@lastcall.work'
 
 interface Interest {
   id: string
@@ -44,7 +44,18 @@ interface Worker {
   certifications?: string[]
 }
 
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   try {
     // Get the interest data from the request
     const { interest, shift, worker } = await req.json() as { 
@@ -56,7 +67,7 @@ serve(async (req) => {
     if (!interest || !shift || !worker) {
       return new Response(
         JSON.stringify({ error: 'Missing interest, shift, or worker data' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -77,7 +88,7 @@ serve(async (req) => {
     // Get business information
     const { data: business, error: businessError } = await supabase
       .from('businesses')
-      .select('id, email, business_name, email_notifications_enabled, test_account')
+      .select('id, email, business_name, email_notifications_enabled, test_account, push_subscription')
       .eq('id', shift.business_id)
       .single()
 
@@ -85,7 +96,7 @@ serve(async (req) => {
       console.error('Error fetching business:', businessError)
       return new Response(
         JSON.stringify({ error: 'Failed to fetch business' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -93,7 +104,7 @@ serve(async (req) => {
     if (testMode && !business.test_account) {
       return new Response(
         JSON.stringify({ message: 'Test mode active - only test accounts receive notifications', notified: false }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -101,7 +112,7 @@ serve(async (req) => {
     if (!business.email_notifications_enabled) {
       return new Response(
         JSON.stringify({ message: 'Business has email notifications disabled', notified: false }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -109,7 +120,7 @@ serve(async (req) => {
     if (!business.email) {
       return new Response(
         JSON.stringify({ message: 'Business has no email address', notified: false }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -159,7 +170,7 @@ serve(async (req) => {
           .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 8px 8px; }
           .shift-details { background: white; padding: 15px; margin: 15px 0; border-radius: 4px; border-left: 4px solid #10b981; }
           .worker-details { background: white; padding: 15px; margin: 15px 0; border-radius: 4px; border-left: 4px solid #3b82f6; }
-          .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 15px; }
+          .button { display: inline-block; background: #3b82f6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 6px; margin-top: 20px; font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
           .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
         </style>
       </head>
@@ -188,7 +199,9 @@ serve(async (req) => {
               ${worker.email ? `<p><strong>Email:</strong> ${worker.email}</p>` : ''}
             </div>
             
-            <a href="https://lastcallwork.com" class="button">View on LastCall</a>
+            <div style="text-align: center; margin-top: 20px;">
+              <a href="https://lastcall.work" class="button">View on LastCall</a>
+            </div>
             
             <p style="margin-top: 20px; font-size: 14px; color: #666;">
               Log in to your LastCall dashboard to review and accept or reject this worker.
@@ -208,7 +221,7 @@ serve(async (req) => {
       console.error('RESEND_API_KEY not configured')
       return new Response(
         JSON.stringify({ error: 'Email service not configured' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -232,30 +245,70 @@ serve(async (req) => {
         console.error(`Failed to send email to ${business.email}:`, errorData)
         return new Response(
           JSON.stringify({ error: 'Failed to send email', details: errorData }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } }
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
+      }
+
+      // Send push notification if business has subscription
+      let pushSent = false
+      if (VAPID_PRIVATE_KEY && VAPID_PUBLIC_KEY && business.push_subscription) {
+        try {
+          webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+          
+          const subscription = typeof business.push_subscription === 'string' 
+            ? JSON.parse(business.push_subscription)
+            : business.push_subscription
+
+          const pushPayload = JSON.stringify({
+            title: `New Worker Interest!`,
+            body: `${worker.full_name} is interested in your ${shift.position} shift`,
+            icon: 'https://lastcall.work/icon-192x192.png',
+            badge: 'https://lastcall.work/badge-72x72.png',
+            tag: `interest-${interest.id}`,
+            data: {
+              url: 'https://lastcall.work'
+            }
+          })
+
+          await webpush.sendNotification(
+            subscription as webpush.PushSubscription,
+            pushPayload
+          )
+          pushSent = true
+          console.log(`Push notification sent to business ${business.id}`)
+        } catch (pushError) {
+          console.error(`Failed to send push to business ${business.id}:`, pushError)
+          // If subscription is invalid, remove it
+          if (pushError.statusCode === 410) {
+            await supabase
+              .from('businesses')
+              .update({ push_subscription: null })
+              .eq('id', business.id)
+          }
+        }
       }
 
       return new Response(
         JSON.stringify({
           message: 'Notification sent successfully',
           notified: true,
-          business_email: business.email
+          business_email: business.email,
+          push_notification: pushSent
         }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     } catch (error) {
       console.error(`Error sending email to ${business.email}:`, error)
       return new Response(
         JSON.stringify({ error: error.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
   } catch (error) {
     console.error('Error in notify-business-interest function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

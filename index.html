@@ -36,17 +36,167 @@
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     // Service Worker Registration for Push Notifications
+    let serviceWorkerRegistration = null;
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/service-worker.js')
           .then((registration) => {
             console.log('Service Worker registered:', registration.scope);
+            serviceWorkerRegistration = registration;
+            // Check if user is already subscribed to push
+            checkPushSubscription();
           })
           .catch((error) => {
             console.log('Service Worker registration failed:', error);
           });
       });
     }
+
+    // Check if user is subscribed to push notifications
+    const checkPushSubscription = async () => {
+      if (!serviceWorkerRegistration) return;
+      try {
+        const subscription = await serviceWorkerRegistration.pushManager.getSubscription();
+        if (subscription) {
+          console.log('User is subscribed to push notifications');
+          // Store subscription in database if needed
+        }
+      } catch (err) {
+        console.log('Error checking push subscription:', err);
+      }
+    };
+
+    // Subscribe to push notifications (works when browser is closed)
+    const subscribeToPush = async () => {
+      if (!serviceWorkerRegistration) {
+        alert('Service Worker not available. Please refresh the page.');
+        return;
+      }
+
+      try {
+        // Request notification permission first
+        if (Notification.permission === 'default') {
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            alert('Notification permission is required for push notifications.');
+            return;
+          }
+        } else if (Notification.permission === 'denied') {
+          alert('Notifications are blocked. Please enable them in your browser settings.');
+          return;
+        }
+
+        // Subscribe to push notifications
+        if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY === 'YOUR_VAPID_PUBLIC_KEY') {
+          throw new Error('VAPID public key not configured. Please set VAPID_PUBLIC_KEY.');
+        }
+
+        const subscription = await serviceWorkerRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+
+        console.log('Push subscription successful:', subscription);
+        
+        // Store subscription in database
+        if (window.user && window.user.id) {
+          const { error } = await supabase
+            .from('workers')
+            .update({ push_subscription: JSON.stringify(subscription) })
+            .eq('id', window.user.id);
+          
+          if (error) {
+            console.error('Error saving push subscription:', error);
+          }
+        }
+
+        return subscription;
+      } catch (err) {
+        console.error('Error subscribing to push:', err);
+        alert('Failed to enable push notifications. ' + err.message);
+        return null;
+      }
+    };
+
+    // Convert VAPID key from base64 URL to Uint8Array
+    const urlBase64ToUint8Array = (base64String) => {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    };
+
+    // VAPID Public Key - Replace with your generated key
+    const VAPID_PUBLIC_KEY = 'YOUR_VAPID_PUBLIC_KEY'; // Will be set after generating keys
+
+    // Request push notification permission (for browser closed notifications)
+    const requestPushNotificationPermission = async () => {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        return; // Browser doesn't support push
+      }
+
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        
+        // Check if already subscribed
+        const existingSubscription = await registration.pushManager.getSubscription();
+        if (existingSubscription) {
+          // Save subscription to database if user is logged in
+          await savePushSubscription(existingSubscription);
+          return; // Already subscribed
+        }
+
+        // Request notification permission first
+        if (Notification.permission === 'default') {
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            return; // User denied
+          }
+        }
+
+        // Subscribe to push notifications (only if VAPID key is set)
+        if (VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
+          const subscription = await subscribeToPush();
+          if (subscription) {
+            await savePushSubscription(subscription);
+            console.log('Push notifications enabled (browser closed mode)');
+          }
+        } else {
+          console.log('VAPID key not set - push notifications will work when browser is open only');
+        }
+      } catch (err) {
+        console.log('Error requesting push permission:', err);
+      }
+    };
+
+    // Save push subscription to database
+    const savePushSubscription = async (subscription) => {
+      if (!window.user || !window.user.id) return;
+
+      const subscriptionJson = JSON.stringify(subscription);
+      const table = window.userType === 'business' ? 'businesses' : 'workers';
+      
+      try {
+        const { error } = await supabase
+          .from(table)
+          .update({ push_subscription: subscriptionJson })
+          .eq('id', window.user.id);
+        
+        if (error) {
+          console.error('Error saving push subscription:', error);
+        } else {
+          console.log('Push subscription saved to database');
+        }
+      } catch (err) {
+        console.error('Error saving push subscription:', err);
+      }
+    };
 
     // Enhanced notification helper - uses Service Worker when available
     const showNotification = async (title, options = {}) => {
@@ -190,10 +340,20 @@
               <div className="flex gap-2">
                 <button
                   onClick={handleEnable}
-                  className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                  disabled={isSubscribing}
+                  className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
                 >
-                  Enable Notifications
+                  {isSubscribing ? 'Enabling...' : 'Enable Notifications'}
                 </button>
+                {permission === 'granted' && (
+                  <button
+                    onClick={handleEnablePush}
+                    disabled={isSubscribing}
+                    className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
+                  >
+                    {isSubscribing ? 'Subscribing...' : 'Enable When Browser Closed'}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setShow(false);
@@ -442,7 +602,8 @@
                 phone: phone.trim() || null,
                 pos_system: posSystem || null,
                 menu_notes: menuNotes.trim() || null,
-                menu_url: menuUrl.trim() || null
+                menu_url: menuUrl.trim() || null,
+                email_notifications_enabled: true // Auto-enable email notifications for new users
               }])
               .select()
               .single();
@@ -470,6 +631,12 @@
 
             setUser(data);
             setView('business-dashboard');
+            // Prompt for push notifications after successful signup
+            setTimeout(() => {
+              if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission === 'default') {
+                requestPushNotificationPermission();
+              }
+            }, 2000);
           } else {
             // Use case-insensitive email lookup to match password reset behavior
             const { data, error: selectError } = await supabase
@@ -496,6 +663,12 @@
 
             setUser(data);
             setView('business-dashboard');
+            // Prompt for push notifications after successful login
+            setTimeout(() => {
+              if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission === 'default') {
+                requestPushNotificationPermission();
+              }
+            }, 2000);
           }
         } catch (err) {
           setError(formatErrorMessage(err));
@@ -803,7 +976,8 @@
                 preferred_payment_methods: preferredPaymentMethods.length > 0 ? preferredPaymentMethods : null,
                 age_18_plus: age18Plus,
                 age_21_plus: age21Plus,
-                available: true
+                available: true,
+                email_notifications_enabled: true // Auto-enable email notifications for new users
               }])
               .select()
               .single();
@@ -831,6 +1005,12 @@
 
             setUser(data);
             setView('worker-dashboard');
+            // Prompt for push notifications after successful signup
+            setTimeout(() => {
+              if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission === 'default') {
+                requestPushNotificationPermission();
+              }
+            }, 2000);
           } else {
             // Use case-insensitive email lookup to match password reset behavior
             const { data, error: selectError } = await supabase
@@ -1895,9 +2075,13 @@
                   address: user.address
                 }
               }
+            }).then(response => {
+              console.log('Notification function called:', response);
+              if (response.error) {
+                console.error('Notification function error:', response.error);
+              }
             }).catch(err => {
-              // Silently fail - notifications are best effort
-              console.log('Notification service unavailable:', err);
+              console.error('Notification service error:', err);
             });
           }
 

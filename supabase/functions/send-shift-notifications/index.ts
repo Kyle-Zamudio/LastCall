@@ -3,9 +3,14 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// @deno-types="https://esm.sh/web-push@3.6.6/index.d.ts"
+import * as webpush from 'https://esm.sh/web-push@3.6.6'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'notifications@lastcallwork.com'
+const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'notifications@lastcall.work'
+const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')
+const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')
+const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:notifications@lastcall.work'
 
 interface Shift {
   id: string
@@ -34,7 +39,18 @@ interface Worker {
   email_notifications_enabled: boolean
 }
 
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   try {
     // Get the shift data from the request
     const { shift, business } = await req.json() as { shift: Shift; business: Business }
@@ -42,7 +58,7 @@ serve(async (req) => {
     if (!shift || !business) {
       return new Response(
         JSON.stringify({ error: 'Missing shift or business data' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -67,7 +83,7 @@ serve(async (req) => {
     // 4. If test mode is active, only include test accounts
     let workersQuery = supabase
       .from('workers')
-      .select('id, email, full_name, positions, email_notifications_enabled')
+      .select('id, email, full_name, positions, email_notifications_enabled, push_subscription')
       .eq('available', true)
       .eq('email_notifications_enabled', true)
       .contains('positions', [shift.position]);
@@ -83,16 +99,32 @@ serve(async (req) => {
       console.error('Error fetching workers:', workersError)
       return new Response(
         JSON.stringify({ error: 'Failed to fetch workers' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     if (!workers || workers.length === 0) {
+      console.log('No workers found matching criteria:', {
+        position: shift.position,
+        testMode: testMode,
+        available: true,
+        email_notifications_enabled: true
+      })
       return new Response(
-        JSON.stringify({ message: 'No workers to notify', notified: 0 }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          message: 'No workers to notify', 
+          notified: 0,
+          debug: {
+            position: shift.position,
+            testMode: testMode,
+            criteria: 'available=true, email_notifications_enabled=true, position matches'
+          }
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    console.log(`Found ${workers.length} worker(s) to notify for ${shift.position} shift`)
 
     // Format the shift date and time
     const shiftDate = new Date(shift.shift_date).toLocaleDateString('en-US', {
@@ -134,7 +166,7 @@ serve(async (req) => {
             .header { background: #1e293b; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
             .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 8px 8px; }
             .shift-details { background: white; padding: 15px; margin: 15px 0; border-radius: 4px; border-left: 4px solid #3b82f6; }
-            .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin-top: 15px; }
+            .button { display: inline-block; background: #3b82f6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 6px; margin-top: 20px; font-weight: bold; font-size: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
             .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
           </style>
         </head>
@@ -158,7 +190,9 @@ serve(async (req) => {
                 ${business.address ? `<p><strong>Location:</strong> ${business.address}</p>` : ''}
               </div>
               
-              <a href="https://lastcallwork.com" class="button">View Shift on LastCall</a>
+              <div style="text-align: center; margin-top: 20px;">
+                <a href="https://lastcall.work" class="button">View Shift on LastCall</a>
+              </div>
               
               <p style="margin-top: 20px; font-size: 14px; color: #666;">
                 This shift may fill quickly, so don't wait!
@@ -209,20 +243,73 @@ serve(async (req) => {
 
     const results = await Promise.all(emailPromises)
     const successCount = results.filter(r => r.success).length
+    
+    console.log(`Email sending results: ${successCount} successful, ${results.length - successCount} failed`)
+    results.forEach((result, index) => {
+      if (!result.success) {
+        console.error(`Failed to send email to ${workers[index].email}:`, result.error)
+      } else {
+        console.log(`Successfully sent email to ${workers[index].email}`)
+      }
+    })
 
-    return new Response(
-      JSON.stringify({
-        message: `Notifications sent to ${successCount} of ${workers.length} workers`,
-        notified: successCount,
-        total: workers.length
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    )
+    // Send push notifications to workers who have subscriptions
+    let pushCount = 0
+    if (VAPID_PRIVATE_KEY && VAPID_PUBLIC_KEY) {
+      webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+      
+      for (const worker of workers) {
+        if (worker.push_subscription) {
+          try {
+            const subscription = typeof worker.push_subscription === 'string' 
+              ? JSON.parse(worker.push_subscription)
+              : worker.push_subscription
+
+            const pushPayload = JSON.stringify({
+              title: `New ${shift.position} Shift Available!`,
+              body: `${business.business_name} posted a ${shift.position} shift on ${shiftDate}`,
+              icon: 'https://lastcall.work/icon-192x192.png',
+              badge: 'https://lastcall.work/badge-72x72.png',
+              tag: `shift-${shift.id}`,
+              data: {
+                url: 'https://lastcall.work'
+              }
+            })
+
+            await webpush.sendNotification(
+              subscription as webpush.PushSubscription,
+              pushPayload
+            )
+            pushCount++
+            console.log(`Push notification sent to worker ${worker.id}`)
+          } catch (pushError) {
+            console.error(`Failed to send push to worker ${worker.id}:`, pushError)
+            // If subscription is invalid, remove it
+            if (pushError.statusCode === 410) {
+              await supabase
+                .from('workers')
+                .update({ push_subscription: null })
+                .eq('id', worker.id)
+            }
+          }
+        }
+      }
+    }
+
+      return new Response(
+        JSON.stringify({
+          message: `Notifications sent to ${successCount} of ${workers.length} workers`,
+          notified: successCount,
+          total: workers.length,
+          push_notifications: pushCount
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
   } catch (error) {
     console.error('Error in send-shift-notifications function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
