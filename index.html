@@ -342,12 +342,8 @@
       const [isSubscribing, setIsSubscribing] = useState(false);
 
       useEffect(() => {
-        // Delay check to ensure service worker is ready
-        const timer = setTimeout(() => {
-          // Show banner if:
-          // 1. Permission is default (not asked yet), OR
-          // 2. Permission is granted but not subscribed to push yet
-          // Don't show if permission is denied (user has blocked notifications)
+        // Check immediately and also after delay for mobile
+        const checkImmediately = () => {
           if ('Notification' in window) {
             console.log('NotificationBanner: Checking permission:', Notification.permission);
             if (Notification.permission === 'denied') {
@@ -362,7 +358,15 @@
               checkPushSubscriptionStatus();
             }
           }
-        }, 2000); // Wait 2 seconds for service worker to be ready
+        };
+
+        // Check immediately (for mobile)
+        checkImmediately();
+
+        // Also check after delay to ensure service worker is ready
+        const timer = setTimeout(() => {
+          checkImmediately();
+        }, 3000); // Wait 3 seconds for service worker to be ready
 
         return () => clearTimeout(timer);
       }, []);
@@ -391,23 +395,30 @@
         }
       };
 
-      const handleEnable = async () => {
-        if ('Notification' in window) {
-          const perm = await Notification.requestPermission();
-          setPermission(perm);
-          if (perm === 'granted') {
-            // Also subscribe to push notifications
-            setIsSubscribing(true);
-            try {
+      const handleEnable = async (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        setIsSubscribing(true);
+        try {
+          if ('Notification' in window) {
+            const perm = await Notification.requestPermission();
+            setPermission(perm);
+            if (perm === 'granted') {
+              // Also subscribe to push notifications
               await requestPushNotificationPermission();
               setShow(false);
               if (onDismiss) onDismiss();
-            } catch (err) {
-              console.error('Error subscribing to push:', err);
-            } finally {
-              setIsSubscribing(false);
+            } else {
+              alert('Notification permission is required for push notifications.');
             }
           }
+        } catch (err) {
+          console.error('Error subscribing to push:', err);
+          alert('Failed to enable push notifications: ' + err.message);
+        } finally {
+          setIsSubscribing(false);
         }
       };
 
@@ -428,9 +439,8 @@
       if (!show) return null;
 
       return (
-        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 bg-slate-800 border border-brand-500 rounded-xl p-4 shadow-2xl">
+        <div className="fixed bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-96 z-50 bg-slate-800 border-t md:border border-brand-500 rounded-t-2xl md:rounded-xl p-4 shadow-2xl">
           <div className="flex items-start gap-3">
-            <div className="text-2xl">🔔</div>
             <div className="flex-1">
               <h3 className="text-white font-semibold mb-1">Enable Push Notifications</h3>
               <p className="text-slate-300 text-sm mb-3">
@@ -1103,13 +1113,13 @@
             window.user = data; // Set global user for push subscription
             window.userType = 'worker'; // Set user type
             setView('worker-dashboard');
-            // Prompt for push notifications after successful signup
+            // Prompt for push notifications after successful signup (longer delay for mobile)
             setTimeout(() => {
               if ('serviceWorker' in navigator && 'PushManager' in window) {
                 // Always try to request permission/subscription
                 requestPushNotificationPermission();
               }
-            }, 3000);
+            }, 5000); // Longer delay for mobile to ensure service worker is ready
           } else {
             // Use case-insensitive email lookup to match password reset behavior
             const { data, error: selectError } = await supabase
@@ -1138,13 +1148,13 @@
             window.user = data; // Set global user for push subscription
             window.userType = 'worker'; // Set user type
             setView('worker-dashboard');
-            // Prompt for push notifications after successful login
+            // Prompt for push notifications after successful login (longer delay for mobile)
             setTimeout(() => {
               if ('serviceWorker' in navigator && 'PushManager' in window) {
                 // Always try to request permission/subscription
                 requestPushNotificationPermission();
               }
-            }, 3000);
+            }, 5000); // Longer delay for mobile to ensure service worker is ready
           }
         } catch (err) {
           setError(formatErrorMessage(err));
@@ -1998,7 +2008,7 @@
           {/* New Interest Alert */}
           {newInterestAlert && (
             <div className="bg-green-500 text-white text-center py-3 px-4 font-semibold animate-pulse">
-              🔔 {newInterestAlert}
+              {newInterestAlert}
               <button onClick={() => setNewInterestAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
             </div>
           )}
@@ -2496,7 +2506,7 @@
                     className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
                   />
                   <div className="text-slate-300 text-sm flex-1">
-                    <span className="font-semibold text-white">📧 Email Notifications</span>
+                    <span className="font-semibold text-white">Email Notifications</span>
                     <p className="text-slate-400 text-xs mt-1">Receive email alerts when workers express interest in your shifts</p>
                   </div>
                 </label>
@@ -4572,33 +4582,48 @@
                     className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
                   />
                   <div className="text-slate-300 text-sm flex-1">
-                    <span className="font-semibold text-white">📧 Email Notifications</span>
+                    <span className="font-semibold text-white">Email Notifications</span>
                     <p className="text-slate-400 text-xs mt-1">Receive email alerts when new shifts matching your positions are posted</p>
                   </div>
                 </label>
               </div>
 
               <div className="mt-4 p-4 bg-slate-700/50 rounded-xl border border-slate-600">
-                <div className="text-slate-300 text-sm">
-                  <span className="font-semibold text-white">🔔 Push Notifications</span>
-                  <p className="text-slate-400 text-xs mt-1 mb-3">Get instant alerts on your phone/computer, even when the browser is closed!</p>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await requestPushNotificationPermission();
-                        setSuccess('Push notifications enabled! You\'ll receive alerts even when the browser is closed.');
-                        setTimeout(() => setSuccess(''), 5000);
-                      } catch (err) {
-                        setError('Failed to enable push notifications: ' + err.message);
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(() => {
+                      // Check if push notifications are enabled
+                      if (typeof window !== 'undefined' && 'Notification' in window) {
+                        return Notification.permission === 'granted';
+                      }
+                      return false;
+                    })()}
+                    onChange={async (e) => {
+                      if (e.target.checked) {
+                        try {
+                          await requestPushNotificationPermission();
+                          setSuccess('Push notifications enabled! You\'ll receive alerts even when the browser is closed.');
+                          setTimeout(() => setSuccess(''), 5000);
+                        } catch (err) {
+                          setError('Failed to enable push notifications: ' + err.message);
+                          setTimeout(() => setError(''), 5000);
+                          e.target.checked = false; // Uncheck if failed
+                        }
+                      } else {
+                        // User wants to disable - show message
+                        setError('To disable push notifications, block them in your browser settings.');
                         setTimeout(() => setError(''), 5000);
+                        e.target.checked = true; // Keep checked
                       }
                     }}
-                    className="w-full bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-                  >
-                    Enable Push Notifications
-                  </button>
-                </div>
+                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
+                  />
+                  <div className="text-slate-300 text-sm flex-1">
+                    <span className="font-semibold text-white">Push Notifications</span>
+                    <p className="text-slate-400 text-xs mt-1">Get instant alerts on your phone/computer, even when the browser is closed</p>
+                  </div>
+                </label>
               </div>
 
               <div>
