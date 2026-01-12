@@ -34,6 +34,57 @@
     const SUPABASE_URL = 'https://thugeejicutetunygyta.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRodWdlZWppY3V0ZXR1bnlneXRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwMTMxMDksImV4cCI6MjA4MjU4OTEwOX0.UnHee0ZNThJkbBjBIjEe61wfKIs_2TKLKGqAw36oFW8';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Service Worker Registration for Push Notifications
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then((registration) => {
+            console.log('Service Worker registered:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('Service Worker registration failed:', error);
+          });
+      });
+    }
+
+    // Enhanced notification helper - uses Service Worker when available
+    const showNotification = async (title, options = {}) => {
+      const defaultOptions = {
+        body: '',
+        icon: '📋',
+        badge: '📋',
+        tag: 'lastcall-notification',
+        requireInteraction: false,
+        vibrate: [200, 100, 200],
+        data: { url: window.location.origin }
+      };
+
+      const notificationOptions = { ...defaultOptions, ...options };
+
+      // Check if Service Worker is available and ready
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          if (registration) {
+            // Use Service Worker for push notification (works when browser is closed)
+            registration.showNotification(title, notificationOptions);
+            return;
+          }
+        } catch (err) {
+          console.log('Service Worker notification failed, falling back to regular notification:', err);
+        }
+      }
+
+      // Fallback to regular browser notification
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(title, notificationOptions);
+        } catch (err) {
+          console.log('Notification failed:', err);
+        }
+      }
+    };
     
     // Simple hash function for passwords (in production, use proper auth)
     const hashPassword = async (password) => {
@@ -101,6 +152,74 @@
     const POS_SYSTEMS = ['Toast', 'Square', 'Aloha', 'Micros', 'TouchBistro', 'Clover', 'Revel', 'Lightspeed', 'SpotOn', 'Other', 'None'];
     const POSITIONS = ['Bartender', 'Server', 'Cook', 'Dishwasher', 'Host', 'Barback'];
     const CERTIFICATIONS = ['TIPS', 'ServSafe', 'Food Handlers Card', 'ABC License', 'None'];
+
+    // Notification Permission Banner Component
+    const NotificationBanner = ({ onDismiss }) => {
+      const [show, setShow] = useState(false);
+      const [permission, setPermission] = useState('Notification' in window ? Notification.permission : 'denied');
+
+      useEffect(() => {
+        // Only show if permission is default (not asked yet)
+        if ('Notification' in window && Notification.permission === 'default') {
+          setShow(true);
+        }
+      }, []);
+
+      const handleEnable = async () => {
+        if ('Notification' in window) {
+          const perm = await Notification.requestPermission();
+          setPermission(perm);
+          if (perm === 'granted') {
+            setShow(false);
+            if (onDismiss) onDismiss();
+          }
+        }
+      };
+
+      if (!show || permission !== 'default') return null;
+
+      return (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 bg-slate-800 border border-brand-500 rounded-xl p-4 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">🔔</div>
+            <div className="flex-1">
+              <h3 className="text-white font-semibold mb-1">Enable Push Notifications</h3>
+              <p className="text-slate-300 text-sm mb-3">
+                Get instant alerts for new shifts and updates, even when your browser is closed!
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleEnable}
+                  className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Enable Notifications
+                </button>
+                <button
+                  onClick={() => {
+                    setShow(false);
+                    if (onDismiss) onDismiss();
+                  }}
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded-lg text-sm transition-colors"
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setShow(false);
+                if (onDismiss) onDismiss();
+              }}
+              className="text-slate-400 hover:text-white"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      );
+    };
 
     // Logo Component
     const Logo = ({ size = "default" }) => {
@@ -1411,19 +1530,13 @@
               ? ` across ${newShifts.length} shift${newShifts.length > 1 ? 's' : ''}`
               : '';
           
-          // Browser notification for new interest
-          if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification('LastCall', {
-                body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest${positionText}! Total: ${currentCount}`,
-                icon: '📞',
-                badge: '📞',
-                tag: 'new-interest'
-              });
-            } catch (err) {
-              // Notification error - silently continue
-            }
-          }
+          // Push notification for new interest (works even when browser is closed)
+          showNotification('LastCall', {
+            body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest${positionText}! Total: ${currentCount}`,
+            icon: '📞',
+            badge: '📞',
+            tag: 'new-interest'
+          });
           
           // Reload shifts to show new interests
           loadShifts();
@@ -1572,6 +1685,7 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
+          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1796,6 +1910,7 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
+          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center gap-4">
               <button onClick={onBack} className="text-slate-400 hover:text-white">
@@ -1984,6 +2099,7 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
+          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center gap-4">
               <button onClick={onBack} className="text-slate-400 hover:text-white">
@@ -2810,6 +2926,7 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
+          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -3087,18 +3204,12 @@
           setRejectedAlert(alertMessage);
           
           // Browser notification
-          if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification('LastCall - Shift Released', {
-                body: notificationBody,
-                icon: '⚠️',
-                badge: '⚠️',
-                tag: 'shift-released'
-              });
-            } catch (err) {
-              // Notification error - silently continue
-            }
-          }
+          showNotification('LastCall - Shift Released', {
+            body: notificationBody,
+            icon: '⚠️',
+            badge: '⚠️',
+            tag: 'shift-released'
+          });
           
           // Reload data to update shift status
           loadData();
@@ -3112,18 +3223,12 @@
           setShiftTab('upcoming'); // Switch to upcoming tab
           
           // Browser notification
-          if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification('LastCall - You got the shift!', {
-                body: `A business has accepted you for ${newCount} shift${newCount > 1 ? 's' : ''}!`,
-                icon: '🎉',
-                badge: '🎉',
-                tag: 'shift-accepted'
-              });
-            } catch (err) {
-              // Notification error - silently continue
-            }
-          }
+          showNotification('LastCall - You got the shift!', {
+            body: `A business has accepted you for ${newCount} shift${newCount > 1 ? 's' : ''}!`,
+            icon: '🎉',
+            badge: '🎉',
+            tag: 'shift-accepted'
+          });
           
           // Reload data to show new shift
           loadData();
@@ -3158,18 +3263,12 @@
           setRejectedAlert(`❌ Someone else was picked${shiftText}. Keep looking!`);
           
           // Browser notification
-          if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification('LastCall - Shift Filled', {
-                body: `A business picked someone else${shiftText}. Don't worry, more shifts are available!`,
-                icon: '❌',
-                badge: '❌',
-                tag: 'shift-rejected'
-              });
-            } catch (err) {
-              // Notification error - silently continue
-            }
-          }
+          showNotification('LastCall - Shift Filled', {
+            body: `A business picked someone else${shiftText}. Don't worry, more shifts are available!`,
+            icon: '❌',
+            badge: '❌',
+            tag: 'shift-rejected'
+          });
           
           // Reload data to update status
           loadData();
@@ -3261,7 +3360,7 @@
             // Browser notification
             if ('Notification' in window && Notification.permission === 'granted') {
               try {
-                new Notification('LastCall - Shift Update', {
+                showNotification('LastCall - Shift Update', {
                   body: messages.join('. '),
                   icon: '⚠️',
                   badge: '⚠️',
@@ -3319,19 +3418,13 @@
         if (currentShiftCount > knownShiftCountRef.current && knownShiftCountRef.current >= 0) {
           const newShiftCount = currentShiftCount - knownShiftCountRef.current;
           
-          // Browser notification for new shifts
-          if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification('LastCall - New Shifts Available!', {
-                body: `${newShiftCount} new shift${newShiftCount > 1 ? 's' : ''} available!`,
-                icon: '📋',
-                badge: '📋',
-                tag: 'new-shifts'
-              });
-            } catch (err) {
-              // Notification error - silently continue
-            }
-          }
+          // Push notification for new shifts (works even when browser is closed)
+          showNotification('LastCall - New Shifts Available!', {
+            body: `${newShiftCount} new shift${newShiftCount > 1 ? 's' : ''} available!`,
+            icon: '📋',
+            badge: '📋',
+            tag: 'new-shifts'
+          });
           
           loadData();
         }
@@ -3630,6 +3723,7 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
+          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-3">
