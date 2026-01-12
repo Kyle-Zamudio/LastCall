@@ -1931,6 +1931,7 @@
     // Business Settings Component
     function BusinessSettings({ user, onBack, onSave }) {
       const [businessName, setBusinessName] = useState(user.business_name || '');
+      const [email, setEmail] = useState(user.email || '');
       const [address, setAddress] = useState(user.address || '');
       const [phone, setPhone] = useState(user.phone || '');
       const [posSystem, setPosSystem] = useState(user.pos_system || '');
@@ -1947,10 +1948,18 @@
         setError('');
         setSuccess('');
 
+        // Validate email format if changed
+        if (email && !isValidEmail(email)) {
+          setError('Please enter a valid email address');
+          setLoading(false);
+          return;
+        }
+
         const { data, error: updateError } = await supabase
           .from('businesses')
           .update({
             business_name: businessName,
+            email: email.trim().toLowerCase() || user.email,
             address,
             phone,
             pos_system: posSystem,
@@ -2000,6 +2009,19 @@
                   className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Email Address</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="your@email.com"
+                  required
+                />
+                <p className="text-slate-400 text-xs mt-1">This email will receive notifications about worker interest</p>
               </div>
 
               <div>
@@ -4017,10 +4039,18 @@
           return;
         }
 
+        // Validate email format if changed
+        if (email && !isValidEmail(email)) {
+          setError('Please enter a valid email address');
+          setLoading(false);
+          return;
+        }
+
         const { data, error: updateError } = await supabase
           .from('workers')
           .update({
             full_name: fullName,
+            email: email.trim().toLowerCase() || user.email,
             phone,
             years_experience: parseInt(yearsExperience) || 0,
             pos_systems: selectedPOS,
@@ -4073,6 +4103,19 @@
                   className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Email Address</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="your@email.com"
+                  required
+                />
+                <p className="text-slate-400 text-xs mt-1">This email will receive notifications about new shifts</p>
               </div>
 
               <div>
