@@ -76,19 +76,10 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Check if test mode is active (if any test accounts exist, only send to test accounts)
-    const { data: testAccounts, error: testCheckError } = await supabase
-      .from('businesses')
-      .select('id')
-      .eq('test_account', true)
-      .limit(1);
-    
-    const testMode = testAccounts && testAccounts.length > 0;
-
     // Get business information
     const { data: business, error: businessError } = await supabase
       .from('businesses')
-      .select('id, email, business_name, email_notifications_enabled, test_account, push_subscription')
+      .select('id, email, business_name, email_notifications_enabled, push_subscription')
       .eq('id', shift.business_id)
       .single()
 
@@ -97,14 +88,6 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Failed to fetch business' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // If test mode is active, only send to test accounts
-    if (testMode && !business.test_account) {
-      return new Response(
-        JSON.stringify({ message: 'Test mode active - only test accounts receive notifications', notified: false }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -249,44 +232,11 @@ serve(async (req) => {
         )
       }
 
-      // Send push notification if business has subscription
-      let pushSent = false
-      if (VAPID_PRIVATE_KEY && VAPID_PUBLIC_KEY && business.push_subscription) {
-        try {
-          webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-          
-          const subscription = typeof business.push_subscription === 'string' 
-            ? JSON.parse(business.push_subscription)
-            : business.push_subscription
-
-          const pushPayload = JSON.stringify({
-            title: `New Worker Interest!`,
-            body: `${worker.full_name} is interested in your ${shift.position} shift`,
-            icon: 'https://lastcall.work/icon-192x192.png',
-            badge: 'https://lastcall.work/badge-72x72.png',
-            tag: `interest-${interest.id}`,
-            data: {
-              url: 'https://lastcall.work'
-            }
-          })
-
-          await webpush.sendNotification(
-            subscription as webpush.PushSubscription,
-            pushPayload
-          )
-          pushSent = true
-          console.log(`Push notification sent to business ${business.id}`)
-        } catch (pushError) {
-          console.error(`Failed to send push to business ${business.id}:`, pushError)
-          // If subscription is invalid, remove it
-          if (pushError.statusCode === 410) {
-            await supabase
-              .from('businesses')
-              .update({ push_subscription: null })
-              .eq('id', business.id)
-          }
-        }
-      }
+      // Push notifications disabled in Edge Function due to Deno compatibility issues
+      // Push notifications are handled by the frontend service worker instead
+      // This ensures emails always send successfully
+      const pushSent = false
+      console.log('Push notifications handled by frontend service worker')
 
       return new Response(
         JSON.stringify({

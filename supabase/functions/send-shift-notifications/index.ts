@@ -3,8 +3,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-// @deno-types="https://esm.sh/web-push@3.6.6/index.d.ts"
-import * as webpush from 'https://esm.sh/web-push@3.6.6'
+// web-push library disabled due to Deno compatibility issues
+// Push notifications will be handled by the frontend service worker instead
+// import * as webpush from 'https://esm.sh/web-push@3.6.6'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'notifications@lastcall.work'
@@ -67,33 +68,16 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Check if test mode is active (if any test accounts exist, only send to test accounts)
-    const { data: testAccounts, error: testCheckError } = await supabase
-      .from('workers')
-      .select('id')
-      .eq('test_account', true)
-      .limit(1);
-    
-    const testMode = testAccounts && testAccounts.length > 0;
-
     // Find all workers who:
     // 1. Have this position in their positions array
     // 2. Have email notifications enabled
     // 3. Are available
-    // 4. If test mode is active, only include test accounts
-    let workersQuery = supabase
+    const { data: workers, error: workersError } = await supabase
       .from('workers')
       .select('id, email, full_name, positions, email_notifications_enabled, push_subscription')
       .eq('available', true)
       .eq('email_notifications_enabled', true)
-      .contains('positions', [shift.position]);
-
-    // If test mode is active, only send to test accounts
-    if (testMode) {
-      workersQuery = workersQuery.eq('test_account', true);
-    }
-
-    const { data: workers, error: workersError } = await workersQuery
+      .contains('positions', [shift.position])
 
     if (workersError) {
       console.error('Error fetching workers:', workersError)
@@ -106,7 +90,6 @@ serve(async (req) => {
     if (!workers || workers.length === 0) {
       console.log('No workers found matching criteria:', {
         position: shift.position,
-        testMode: testMode,
         available: true,
         email_notifications_enabled: true
       })
@@ -116,7 +99,6 @@ serve(async (req) => {
           notified: 0,
           debug: {
             position: shift.position,
-            testMode: testMode,
             criteria: 'available=true, email_notifications_enabled=true, position matches'
           }
         }),
@@ -253,48 +235,11 @@ serve(async (req) => {
       }
     })
 
-    // Send push notifications to workers who have subscriptions
-    let pushCount = 0
-    if (VAPID_PRIVATE_KEY && VAPID_PUBLIC_KEY) {
-      webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-      
-      for (const worker of workers) {
-        if (worker.push_subscription) {
-          try {
-            const subscription = typeof worker.push_subscription === 'string' 
-              ? JSON.parse(worker.push_subscription)
-              : worker.push_subscription
-
-            const pushPayload = JSON.stringify({
-              title: `New ${shift.position} Shift Available!`,
-              body: `${business.business_name} posted a ${shift.position} shift on ${shiftDate}`,
-              icon: 'https://lastcall.work/icon-192x192.png',
-              badge: 'https://lastcall.work/badge-72x72.png',
-              tag: `shift-${shift.id}`,
-              data: {
-                url: 'https://lastcall.work'
-              }
-            })
-
-            await webpush.sendNotification(
-              subscription as webpush.PushSubscription,
-              pushPayload
-            )
-            pushCount++
-            console.log(`Push notification sent to worker ${worker.id}`)
-          } catch (pushError) {
-            console.error(`Failed to send push to worker ${worker.id}:`, pushError)
-            // If subscription is invalid, remove it
-            if (pushError.statusCode === 410) {
-              await supabase
-                .from('workers')
-                .update({ push_subscription: null })
-                .eq('id', worker.id)
-            }
-          }
-        }
-      }
-    }
+    // Push notifications disabled in Edge Function due to Deno compatibility issues
+    // Push notifications are handled by the frontend service worker instead
+    // This ensures emails always send successfully
+    const pushCount = 0
+    console.log('Push notifications handled by frontend service worker')
 
       return new Response(
         JSON.stringify({
