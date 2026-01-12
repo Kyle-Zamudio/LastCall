@@ -132,61 +132,93 @@
       return outputArray;
     };
 
-    // VAPID Public Key - Replace with your generated key
-    const VAPID_PUBLIC_KEY = 'YOUR_VAPID_PUBLIC_KEY'; // Will be set after generating keys
+    // VAPID Public Key
+    const VAPID_PUBLIC_KEY = 'BHEa9sG5sOcHRYdY876A1UAWwhQCvDIKG48QjLnFT9a0Uc_h9Jls7uVWHBq42yO4KjFnuK_n_4q6CSwqjOERnak';
 
     // Request push notification permission (for browser closed notifications)
     const requestPushNotificationPermission = async () => {
+      console.log('requestPushNotificationPermission: Starting...');
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.log('requestPushNotificationPermission: Browser does not support push');
         return; // Browser doesn't support push
       }
 
       try {
+        console.log('requestPushNotificationPermission: Waiting for service worker...');
         const registration = await navigator.serviceWorker.ready;
+        console.log('requestPushNotificationPermission: Service worker ready');
         
         // Check if already subscribed
         const existingSubscription = await registration.pushManager.getSubscription();
         if (existingSubscription) {
+          console.log('requestPushNotificationPermission: Already subscribed');
           // Save subscription to database if user is logged in
           await savePushSubscription(existingSubscription);
           return; // Already subscribed
         }
 
+        console.log('requestPushNotificationPermission: Current permission:', Notification.permission);
         // Request notification permission first
         if (Notification.permission === 'default') {
+          console.log('requestPushNotificationPermission: Requesting notification permission...');
           const permission = await Notification.requestPermission();
+          console.log('requestPushNotificationPermission: Permission result:', permission);
           if (permission !== 'granted') {
+            console.log('requestPushNotificationPermission: Permission denied');
             return; // User denied
           }
         }
 
         // Subscribe to push notifications (only if VAPID key is set)
         if (VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
+          console.log('requestPushNotificationPermission: Subscribing to push...');
           const subscription = await subscribeToPush();
           if (subscription) {
             await savePushSubscription(subscription);
             console.log('Push notifications enabled (browser closed mode)');
+          } else {
+            console.log('requestPushNotificationPermission: Subscription failed');
           }
         } else {
           console.log('VAPID key not set - push notifications will work when browser is open only');
         }
       } catch (err) {
-        console.log('Error requesting push permission:', err);
+        console.error('Error requesting push permission:', err);
       }
     };
 
     // Save push subscription to database
     const savePushSubscription = async (subscription) => {
-      if (!window.user || !window.user.id) return;
+      // Try to get user from window.user or from localStorage
+      let user = window.user;
+      let userType = window.userType;
+      
+      if (!user) {
+        try {
+          const savedUser = localStorage.getItem('lastcall_user');
+          const savedType = localStorage.getItem('lastcall_type');
+          if (savedUser) {
+            user = JSON.parse(savedUser);
+            userType = savedType;
+          }
+        } catch (e) {
+          console.log('Could not get user from localStorage');
+        }
+      }
+
+      if (!user || !user.id) {
+        console.log('No user found - will save subscription later');
+        return;
+      }
 
       const subscriptionJson = JSON.stringify(subscription);
-      const table = window.userType === 'business' ? 'businesses' : 'workers';
+      const table = userType === 'business' ? 'businesses' : 'workers';
       
       try {
         const { error } = await supabase
           .from(table)
           .update({ push_subscription: subscriptionJson })
-          .eq('id', window.user.id);
+          .eq('id', user.id);
         
         if (error) {
           console.error('Error saving push subscription:', error);
@@ -307,26 +339,89 @@
     const NotificationBanner = ({ onDismiss }) => {
       const [show, setShow] = useState(false);
       const [permission, setPermission] = useState('Notification' in window ? Notification.permission : 'denied');
+      const [isSubscribing, setIsSubscribing] = useState(false);
 
       useEffect(() => {
-        // Only show if permission is default (not asked yet)
-        if ('Notification' in window && Notification.permission === 'default') {
-          setShow(true);
-        }
+        // Delay check to ensure service worker is ready
+        const timer = setTimeout(() => {
+          // Show banner if:
+          // 1. Permission is default (not asked yet), OR
+          // 2. Permission is granted but not subscribed to push yet
+          if ('Notification' in window) {
+            console.log('NotificationBanner: Checking permission:', Notification.permission);
+            if (Notification.permission === 'default') {
+              console.log('NotificationBanner: Permission is default - showing banner');
+              setShow(true);
+            } else if (Notification.permission === 'granted') {
+              // Check if subscribed to push
+              console.log('NotificationBanner: Permission granted - checking subscription');
+              checkPushSubscriptionStatus();
+            }
+          }
+        }, 2000); // Wait 2 seconds for service worker to be ready
+
+        return () => clearTimeout(timer);
       }, []);
+
+      const checkPushSubscriptionStatus = async () => {
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+          try {
+            console.log('NotificationBanner: Checking push subscription status...');
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+            console.log('NotificationBanner: Current subscription:', subscription ? 'exists' : 'none');
+            if (!subscription && VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
+              // Not subscribed to push yet - show banner
+              console.log('NotificationBanner: No subscription found - showing banner');
+              setShow(true);
+            } else if (!subscription) {
+              console.log('NotificationBanner: VAPID key not set');
+            }
+          } catch (err) {
+            console.error('NotificationBanner: Error checking subscription:', err);
+            // Show banner anyway if there's an error
+            setShow(true);
+          }
+        } else {
+          console.log('NotificationBanner: Service Worker or PushManager not supported');
+        }
+      };
 
       const handleEnable = async () => {
         if ('Notification' in window) {
           const perm = await Notification.requestPermission();
           setPermission(perm);
           if (perm === 'granted') {
-            setShow(false);
-            if (onDismiss) onDismiss();
+            // Also subscribe to push notifications
+            setIsSubscribing(true);
+            try {
+              await requestPushNotificationPermission();
+              setShow(false);
+              if (onDismiss) onDismiss();
+            } catch (err) {
+              console.error('Error subscribing to push:', err);
+            } finally {
+              setIsSubscribing(false);
+            }
           }
         }
       };
 
-      if (!show || permission !== 'default') return null;
+      const handleEnablePush = async () => {
+        setIsSubscribing(true);
+        try {
+          await requestPushNotificationPermission();
+          setShow(false);
+          if (onDismiss) onDismiss();
+        } catch (err) {
+          console.error('Error subscribing to push:', err);
+          alert('Failed to enable push notifications: ' + err.message);
+        } finally {
+          setIsSubscribing(false);
+        }
+      };
+
+      if (!show) return null;
 
       return (
         <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 bg-slate-800 border border-brand-500 rounded-xl p-4 shadow-2xl">
@@ -335,7 +430,7 @@
             <div className="flex-1">
               <h3 className="text-white font-semibold mb-1">Enable Push Notifications</h3>
               <p className="text-slate-300 text-sm mb-3">
-                Get instant alerts for new shifts and updates, even when your browser is closed!
+                Get instant alerts for new shifts and updates, even when your browser is closed! Works on your phone too! 📱
               </p>
               <div className="flex gap-2">
                 <button
@@ -630,13 +725,16 @@
             }
 
             setUser(data);
+            window.user = data; // Set global user for push subscription
+            window.userType = 'business'; // Set user type
             setView('business-dashboard');
             // Prompt for push notifications after successful signup
             setTimeout(() => {
-              if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission === 'default') {
+              if ('serviceWorker' in navigator && 'PushManager' in window) {
+                // Always try to request permission/subscription
                 requestPushNotificationPermission();
               }
-            }, 2000);
+            }, 3000);
           } else {
             // Use case-insensitive email lookup to match password reset behavior
             const { data, error: selectError } = await supabase
@@ -662,13 +760,16 @@
             }
 
             setUser(data);
+            window.user = data; // Set global user for push subscription
+            window.userType = 'business'; // Set user type
             setView('business-dashboard');
             // Prompt for push notifications after successful login
             setTimeout(() => {
-              if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission === 'default') {
+              if ('serviceWorker' in navigator && 'PushManager' in window) {
+                // Always try to request permission/subscription
                 requestPushNotificationPermission();
               }
-            }, 2000);
+            }, 3000);
           }
         } catch (err) {
           setError(formatErrorMessage(err));
@@ -1004,13 +1105,16 @@
             }
 
             setUser(data);
+            window.user = data; // Set global user for push subscription
+            window.userType = 'worker'; // Set user type
             setView('worker-dashboard');
             // Prompt for push notifications after successful signup
             setTimeout(() => {
-              if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission === 'default') {
+              if ('serviceWorker' in navigator && 'PushManager' in window) {
+                // Always try to request permission/subscription
                 requestPushNotificationPermission();
               }
-            }, 2000);
+            }, 3000);
           } else {
             // Use case-insensitive email lookup to match password reset behavior
             const { data, error: selectError } = await supabase
@@ -1036,7 +1140,16 @@
             }
 
             setUser(data);
+            window.user = data; // Set global user for push subscription
+            window.userType = 'worker'; // Set user type
             setView('worker-dashboard');
+            // Prompt for push notifications after successful login
+            setTimeout(() => {
+              if ('serviceWorker' in navigator && 'PushManager' in window) {
+                // Always try to request permission/subscription
+                requestPushNotificationPermission();
+              }
+            }, 3000);
           }
         } catch (err) {
           setError(formatErrorMessage(err));
@@ -4468,6 +4581,29 @@
                     <p className="text-slate-400 text-xs mt-1">Receive email alerts when new shifts matching your positions are posted</p>
                   </div>
                 </label>
+              </div>
+
+              <div className="mt-4 p-4 bg-slate-700/50 rounded-xl border border-slate-600">
+                <div className="text-slate-300 text-sm">
+                  <span className="font-semibold text-white">🔔 Push Notifications</span>
+                  <p className="text-slate-400 text-xs mt-1 mb-3">Get instant alerts on your phone/computer, even when the browser is closed!</p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await requestPushNotificationPermission();
+                        setSuccess('Push notifications enabled! You\'ll receive alerts even when the browser is closed.');
+                        setTimeout(() => setSuccess(''), 5000);
+                      } catch (err) {
+                        setError('Failed to enable push notifications: ' + err.message);
+                        setTimeout(() => setError(''), 5000);
+                      }
+                    }}
+                    className="w-full bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    Enable Push Notifications
+                  </button>
+                </div>
               </div>
 
               <div>
