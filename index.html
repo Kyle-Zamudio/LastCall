@@ -3968,6 +3968,7 @@
     // Worker Settings Component
     function WorkerSettings({ user, onBack, onSave }) {
       const [fullName, setFullName] = useState(user.full_name || '');
+      const [email, setEmail] = useState(user.email || '');
       const [phone, setPhone] = useState(user.phone || '');
       const [yearsExperience, setYearsExperience] = useState(user.years_experience || '');
       const [selectedPOS, setSelectedPOS] = useState(user.pos_systems || []);
