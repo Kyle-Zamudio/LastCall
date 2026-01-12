@@ -347,9 +347,13 @@
           // Show banner if:
           // 1. Permission is default (not asked yet), OR
           // 2. Permission is granted but not subscribed to push yet
+          // Don't show if permission is denied (user has blocked notifications)
           if ('Notification' in window) {
             console.log('NotificationBanner: Checking permission:', Notification.permission);
-            if (Notification.permission === 'default') {
+            if (Notification.permission === 'denied') {
+              console.log('NotificationBanner: Permission denied - not showing banner');
+              setShow(false);
+            } else if (Notification.permission === 'default') {
               console.log('NotificationBanner: Permission is default - showing banner');
               setShow(true);
             } else if (Notification.permission === 'granted') {
@@ -430,7 +434,7 @@
             <div className="flex-1">
               <h3 className="text-white font-semibold mb-1">Enable Push Notifications</h3>
               <p className="text-slate-300 text-sm mb-3">
-                Get instant alerts for new shifts and updates, even when your browser is closed! Works on your phone too! 📱
+                Get instant alerts for new shifts and updates, even when your browser is closed
               </p>
               <div className="flex gap-2">
                 <button
@@ -440,15 +444,6 @@
                 >
                   {isSubscribing ? 'Enabling...' : 'Enable Notifications'}
                 </button>
-                {permission === 'granted' && (
-                  <button
-                    onClick={handleEnablePush}
-                    disabled={isSubscribing}
-                    className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
-                  >
-                    {isSubscribing ? 'Subscribing...' : 'Enable When Browser Closed'}
-                  </button>
-                )}
                 <button
                   onClick={() => {
                     setShow(false);
