@@ -51,16 +51,33 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Check if test mode is active (if any test accounts exist, only send to test accounts)
+    const { data: testAccounts, error: testCheckError } = await supabase
+      .from('workers')
+      .select('id')
+      .eq('test_account', true)
+      .limit(1);
+    
+    const testMode = testAccounts && testAccounts.length > 0;
+
     // Find all workers who:
     // 1. Have this position in their positions array
     // 2. Have email notifications enabled
     // 3. Are available
-    const { data: workers, error: workersError } = await supabase
+    // 4. If test mode is active, only include test accounts
+    let workersQuery = supabase
       .from('workers')
       .select('id, email, full_name, positions, email_notifications_enabled')
       .eq('available', true)
       .eq('email_notifications_enabled', true)
-      .contains('positions', [shift.position])
+      .contains('positions', [shift.position]);
+
+    // If test mode is active, only send to test accounts
+    if (testMode) {
+      workersQuery = workersQuery.eq('test_account', true);
+    }
+
+    const { data: workers, error: workersError } = await workersQuery
 
     if (workersError) {
       console.error('Error fetching workers:', workersError)

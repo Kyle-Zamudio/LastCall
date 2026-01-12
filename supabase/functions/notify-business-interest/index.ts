@@ -65,10 +65,19 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Check if test mode is active (if any test accounts exist, only send to test accounts)
+    const { data: testAccounts, error: testCheckError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('test_account', true)
+      .limit(1);
+    
+    const testMode = testAccounts && testAccounts.length > 0;
+
     // Get business information
     const { data: business, error: businessError } = await supabase
       .from('businesses')
-      .select('id, email, business_name, email_notifications_enabled')
+      .select('id, email, business_name, email_notifications_enabled, test_account')
       .eq('id', shift.business_id)
       .single()
 
@@ -77,6 +86,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Failed to fetch business' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // If test mode is active, only send to test accounts
+    if (testMode && !business.test_account) {
+      return new Response(
+        JSON.stringify({ message: 'Test mode active - only test accounts receive notifications', notified: false }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
       )
     }
 
