@@ -34,241 +34,24 @@
     const SUPABASE_URL = 'https://thugeejicutetunygyta.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRodWdlZWppY3V0ZXR1bnlneXRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwMTMxMDksImV4cCI6MjA4MjU4OTEwOX0.UnHee0ZNThJkbBjBIjEe61wfKIs_2TKLKGqAw36oFW8';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    // Service Worker Registration for Push Notifications
-    let serviceWorkerRegistration = null;
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then((registration) => {
-            console.log('Service Worker registered:', registration.scope);
-            serviceWorkerRegistration = registration;
-            // Check if user is already subscribed to push
-            checkPushSubscription();
-          })
-          .catch((error) => {
-            console.log('Service Worker registration failed:', error);
-          });
-      });
-    }
-
-    // Check if user is subscribed to push notifications
-    const checkPushSubscription = async () => {
-      if (!serviceWorkerRegistration) return;
-      try {
-        const subscription = await serviceWorkerRegistration.pushManager.getSubscription();
-        if (subscription) {
-          console.log('User is subscribed to push notifications');
-          // Store subscription in database if needed
-        }
-      } catch (err) {
-        console.log('Error checking push subscription:', err);
-      }
-    };
-
-    // Subscribe to push notifications (works when browser is closed)
-    const subscribeToPush = async () => {
-      if (!serviceWorkerRegistration) {
-        alert('Service Worker not available. Please refresh the page.');
-        return;
-      }
-
-      try {
-        // Request notification permission first
-        if (Notification.permission === 'default') {
-          const permission = await Notification.requestPermission();
-          if (permission !== 'granted') {
-            alert('Notification permission is required for push notifications.');
-            return;
-          }
-        } else if (Notification.permission === 'denied') {
-          alert('Notifications are blocked. Please enable them in your browser settings.');
-          return;
-        }
-
-        // Subscribe to push notifications
-        if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY === 'YOUR_VAPID_PUBLIC_KEY') {
-          throw new Error('VAPID public key not configured. Please set VAPID_PUBLIC_KEY.');
-        }
-
-        const subscription = await serviceWorkerRegistration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
-
-        console.log('Push subscription successful:', subscription);
-        
-        // Store subscription in database
-        if (window.user && window.user.id) {
-          const { error } = await supabase
-            .from('workers')
-            .update({ push_subscription: JSON.stringify(subscription) })
-            .eq('id', window.user.id);
-          
-          if (error) {
-            console.error('Error saving push subscription:', error);
-          }
-        }
-
-        return subscription;
-      } catch (err) {
-        console.error('Error subscribing to push:', err);
-        alert('Failed to enable push notifications. ' + err.message);
-        return null;
-      }
-    };
-
-    // Convert VAPID key from base64 URL to Uint8Array
-    const urlBase64ToUint8Array = (base64String) => {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding)
-        .replace(/\-/g, '+')
-        .replace(/_/g, '/');
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-      }
-      return outputArray;
-    };
-
-    // VAPID Public Key
-    const VAPID_PUBLIC_KEY = 'BHEa9sG5sOcHRYdY876A1UAWwhQCvDIKG48QjLnFT9a0Uc_h9Jls7uVWHBq42yO4KjFnuK_n_4q6CSwqjOERnak';
-
-    // Request push notification permission (for browser closed notifications)
-    const requestPushNotificationPermission = async () => {
-      console.log('requestPushNotificationPermission: Starting...');
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.log('requestPushNotificationPermission: Browser does not support push');
-        return; // Browser doesn't support push
-      }
-
-      try {
-        console.log('requestPushNotificationPermission: Waiting for service worker...');
-        const registration = await navigator.serviceWorker.ready;
-        console.log('requestPushNotificationPermission: Service worker ready');
-        
-        // Check if already subscribed
-        const existingSubscription = await registration.pushManager.getSubscription();
-        if (existingSubscription) {
-          console.log('requestPushNotificationPermission: Already subscribed');
-          // Save subscription to database if user is logged in
-          await savePushSubscription(existingSubscription);
-          return; // Already subscribed
-        }
-
-        console.log('requestPushNotificationPermission: Current permission:', Notification.permission);
-        // Request notification permission first
-        if (Notification.permission === 'default') {
-          console.log('requestPushNotificationPermission: Requesting notification permission...');
-          const permission = await Notification.requestPermission();
-          console.log('requestPushNotificationPermission: Permission result:', permission);
-          if (permission !== 'granted') {
-            console.log('requestPushNotificationPermission: Permission denied');
-            return; // User denied
-          }
-        }
-
-        // Subscribe to push notifications (only if VAPID key is set)
-        if (VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
-          console.log('requestPushNotificationPermission: Subscribing to push...');
-          const subscription = await subscribeToPush();
-          if (subscription) {
-            await savePushSubscription(subscription);
-            console.log('Push notifications enabled (browser closed mode)');
-          } else {
-            console.log('requestPushNotificationPermission: Subscription failed');
-          }
-        } else {
-          console.log('VAPID key not set - push notifications will work when browser is open only');
-        }
-      } catch (err) {
-        console.error('Error requesting push permission:', err);
-      }
-    };
-
-    // Save push subscription to database
-    const savePushSubscription = async (subscription) => {
-      // Try to get user from window.user or from localStorage
-      let user = window.user;
-      let userType = window.userType;
-      
-      if (!user) {
-        try {
-          const savedUser = localStorage.getItem('lastcall_user');
-          const savedType = localStorage.getItem('lastcall_type');
-          if (savedUser) {
-            user = JSON.parse(savedUser);
-            userType = savedType;
-          }
-        } catch (e) {
-          console.log('Could not get user from localStorage');
-        }
-      }
-
-      if (!user || !user.id) {
-        console.log('No user found - will save subscription later');
-        return;
-      }
-
-      const subscriptionJson = JSON.stringify(subscription);
-      const table = userType === 'business' ? 'businesses' : 'workers';
-      
-      try {
-        const { error } = await supabase
-          .from(table)
-          .update({ push_subscription: subscriptionJson })
-          .eq('id', user.id);
-        
-        if (error) {
-          console.error('Error saving push subscription:', error);
-        } else {
-          console.log('Push subscription saved to database');
-        }
-      } catch (err) {
-        console.error('Error saving push subscription:', err);
-      }
-    };
-
-    // Enhanced notification helper - uses Service Worker when available
-    const showNotification = async (title, options = {}) => {
-      const defaultOptions = {
-        body: '',
-        icon: '📋',
-        badge: '📋',
-        tag: 'lastcall-notification',
-        requireInteraction: false,
-        vibrate: [200, 100, 200],
-        data: { url: window.location.origin }
-      };
-
-      const notificationOptions = { ...defaultOptions, ...options };
-
-      // Check if Service Worker is available and ready
-      if ('serviceWorker' in navigator && 'PushManager' in window) {
-        try {
-          const registration = await navigator.serviceWorker.ready;
-          if (registration) {
-            // Use Service Worker for push notification (works when browser is closed)
-            registration.showNotification(title, notificationOptions);
-            return;
-          }
-        } catch (err) {
-          console.log('Service Worker notification failed, falling back to regular notification:', err);
-        }
-      }
-
-      // Fallback to regular browser notification
-      if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-          new Notification(title, notificationOptions);
-        } catch (err) {
-          console.log('Notification failed:', err);
-        }
-      }
-    };
     
     // Simple hash function for passwords (in production, use proper auth)
+    // Simple hash fallback for browsers without crypto.subtle (like Facebook's in-app browser)
+    const simpleHash = (str) => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      // Convert to positive hex string and pad to look like a hash
+      const hashStr = Math.abs(hash).toString(16);
+      // Repeat and combine to make it longer like a real hash
+      const extended = (hashStr + hashStr + hashStr + hashStr).slice(0, 32);
+      // Add a prefix so we know it's a fallback hash
+      return 'fb' + extended + str.length.toString(16).padStart(4, '0');
+    };
+
     const hashPassword = async (password) => {
       if (!password) {
         throw new Error('Password is required');
@@ -282,11 +65,12 @@
           const hash = await crypto.subtle.digest('SHA-256', data);
           return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
         } catch (err) {
-          throw new Error('Password hashing failed. Please try again.');
+          // If crypto.subtle fails, use fallback
+          return simpleHash(password);
         }
       } else {
-        // Fallback for older browsers (basic hash, not secure but better than nothing)
-        throw new Error('Your browser does not support secure password hashing. Please use a modern browser.');
+        // Fallback for older browsers (like Facebook in-app browser)
+        return simpleHash(password);
       }
     };
 
@@ -331,155 +115,9 @@
     };
 
     // POS Systems list
-    const POS_SYSTEMS = ['Toast', 'Square', 'Aloha', 'Micros', 'TouchBistro', 'Clover', 'Revel', 'Lightspeed', 'SpotOn', 'Other', 'None'];
+    const POS_SYSTEMS = ['Toast', 'Square', 'Aloha', 'Micros', 'TouchBistro', 'Clover', 'Revel', 'Lightspeed', 'SpotOn', 'Other'];
     const POSITIONS = ['Bartender', 'Server', 'Cook', 'Dishwasher', 'Host', 'Barback'];
     const CERTIFICATIONS = ['TIPS', 'ServSafe', 'Food Handlers Card', 'ABC License', 'None'];
-
-    // Notification Permission Banner Component
-    const NotificationBanner = ({ onDismiss }) => {
-      const [show, setShow] = useState(false);
-      const [permission, setPermission] = useState('Notification' in window ? Notification.permission : 'denied');
-      const [isSubscribing, setIsSubscribing] = useState(false);
-
-      useEffect(() => {
-        // Check immediately and also after delay for mobile
-        const checkImmediately = () => {
-          if ('Notification' in window) {
-            console.log('NotificationBanner: Checking permission:', Notification.permission);
-            if (Notification.permission === 'denied') {
-              console.log('NotificationBanner: Permission denied - not showing banner');
-              setShow(false);
-            } else if (Notification.permission === 'default') {
-              console.log('NotificationBanner: Permission is default - showing banner');
-              setShow(true);
-            } else if (Notification.permission === 'granted') {
-              // Check if subscribed to push
-              console.log('NotificationBanner: Permission granted - checking subscription');
-              checkPushSubscriptionStatus();
-            }
-          }
-        };
-
-        // Check immediately (for mobile)
-        checkImmediately();
-
-        // Also check after delay to ensure service worker is ready
-        const timer = setTimeout(() => {
-          checkImmediately();
-        }, 3000); // Wait 3 seconds for service worker to be ready
-
-        return () => clearTimeout(timer);
-      }, []);
-
-      const checkPushSubscriptionStatus = async () => {
-        if ('serviceWorker' in navigator && 'PushManager' in window) {
-          try {
-            console.log('NotificationBanner: Checking push subscription status...');
-            const registration = await navigator.serviceWorker.ready;
-            const subscription = await registration.pushManager.getSubscription();
-            console.log('NotificationBanner: Current subscription:', subscription ? 'exists' : 'none');
-            if (!subscription && VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
-              // Not subscribed to push yet - show banner
-              console.log('NotificationBanner: No subscription found - showing banner');
-              setShow(true);
-            } else if (!subscription) {
-              console.log('NotificationBanner: VAPID key not set');
-            }
-          } catch (err) {
-            console.error('NotificationBanner: Error checking subscription:', err);
-            // Show banner anyway if there's an error
-            setShow(true);
-          }
-        } else {
-          console.log('NotificationBanner: Service Worker or PushManager not supported');
-        }
-      };
-
-      const handleEnable = async (e) => {
-        if (e) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-        setIsSubscribing(true);
-        try {
-          if ('Notification' in window) {
-            const perm = await Notification.requestPermission();
-            setPermission(perm);
-            if (perm === 'granted') {
-              // Also subscribe to push notifications
-              await requestPushNotificationPermission();
-              setShow(false);
-              if (onDismiss) onDismiss();
-            } else {
-              alert('Notification permission is required for push notifications.');
-            }
-          }
-        } catch (err) {
-          console.error('Error subscribing to push:', err);
-          alert('Failed to enable push notifications: ' + err.message);
-        } finally {
-          setIsSubscribing(false);
-        }
-      };
-
-      const handleEnablePush = async () => {
-        setIsSubscribing(true);
-        try {
-          await requestPushNotificationPermission();
-          setShow(false);
-          if (onDismiss) onDismiss();
-        } catch (err) {
-          console.error('Error subscribing to push:', err);
-          alert('Failed to enable push notifications: ' + err.message);
-        } finally {
-          setIsSubscribing(false);
-        }
-      };
-
-      if (!show) return null;
-
-      return (
-        <div className="fixed bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-96 z-50 bg-slate-800 border-t md:border border-brand-500 rounded-t-2xl md:rounded-xl p-4 shadow-2xl">
-          <div className="flex items-start gap-3">
-            <div className="flex-1">
-              <h3 className="text-white font-semibold mb-1">Enable Push Notifications</h3>
-              <p className="text-slate-300 text-sm mb-3">
-                Get instant alerts for new shifts and updates, even when your browser is closed
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleEnable}
-                  disabled={isSubscribing}
-                  className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-                >
-                  {isSubscribing ? 'Enabling...' : 'Enable Notifications'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShow(false);
-                    if (onDismiss) onDismiss();
-                  }}
-                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2 rounded-lg text-sm transition-colors"
-                >
-                  Maybe Later
-                </button>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setShow(false);
-                if (onDismiss) onDismiss();
-              }}
-              className="text-slate-400 hover:text-white"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      );
-    };
 
     // Logo Component
     const Logo = ({ size = "default" }) => {
@@ -702,8 +340,7 @@
                 phone: phone.trim() || null,
                 pos_system: posSystem || null,
                 menu_notes: menuNotes.trim() || null,
-                menu_url: menuUrl.trim() || null,
-                email_notifications_enabled: true // Auto-enable email notifications for new users
+                menu_url: menuUrl.trim() || null
               }])
               .select()
               .single();
@@ -730,26 +367,32 @@
             }
 
             setUser(data);
-            window.user = data; // Set global user for push subscription
-            window.userType = 'business'; // Set user type
             setView('business-dashboard');
-            // Prompt for push notifications after successful signup
-            setTimeout(() => {
-              if ('serviceWorker' in navigator && 'PushManager' in window) {
-                // Always try to request permission/subscription
-                requestPushNotificationPermission();
-              }
-            }, 3000);
           } else {
             // Use case-insensitive email lookup to match password reset behavior
-            const { data, error: selectError } = await supabase
+            let { data, error: selectError } = await supabase
               .from('businesses')
               .select('*')
               .ilike('email', email.trim())
               .eq('password_hash', passwordHash)
               .single();
 
+            // If login failed, try with fallback hash (for accounts created in Facebook browser)
             if (selectError || !data) {
+              const fallbackHash = simpleHash(password);
+              const { data: fallbackData, error: fallbackError } = await supabase
+                .from('businesses')
+                .select('*')
+                .ilike('email', email.trim())
+                .eq('password_hash', fallbackHash)
+                .single();
+              
+              if (!fallbackError && fallbackData) {
+                data = fallbackData;
+              }
+            }
+
+            if (!data) {
               setError('Invalid email or password');
               setLoading(false);
               return;
@@ -765,16 +408,7 @@
             }
 
             setUser(data);
-            window.user = data; // Set global user for push subscription
-            window.userType = 'business'; // Set user type
             setView('business-dashboard');
-            // Prompt for push notifications after successful login
-            setTimeout(() => {
-              if ('serviceWorker' in navigator && 'PushManager' in window) {
-                // Always try to request permission/subscription
-                requestPushNotificationPermission();
-              }
-            }, 3000);
           }
         } catch (err) {
           setError(formatErrorMessage(err));
@@ -965,8 +599,6 @@
       const [yearsExperience, setYearsExperience] = useState('');
       const [selectedCerts, setSelectedCerts] = useState([]);
       const [preferredPaymentMethods, setPreferredPaymentMethods] = useState([]);
-      const [age18Plus, setAge18Plus] = useState(false);
-      const [age21Plus, setAge21Plus] = useState(false);
       const [acceptedTerms, setAcceptedTerms] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
@@ -978,36 +610,6 @@
           setSelected(selected.filter(i => i !== item));
         } else {
           setSelected([...selected, item]);
-        }
-      };
-
-      const togglePOSSelection = (item, selected, setSelected) => {
-        if (item === 'None') {
-          // If clicking "None" and it's already selected, deselect it
-          if (selected.includes('None')) {
-            setSelected([]);
-          } else {
-            // Select only "None" and clear all others
-            setSelected(['None']);
-          }
-        } else {
-          // If clicking any other POS system
-          if (selected.includes('None')) {
-            // If "None" is selected, remove it first, then toggle the clicked item
-            const withoutNone = selected.filter(i => i !== 'None');
-            if (withoutNone.includes(item)) {
-              setSelected(withoutNone.filter(i => i !== item));
-            } else {
-              setSelected([...withoutNone, item]);
-            }
-          } else {
-            // Normal toggle behavior
-            if (selected.includes(item)) {
-              setSelected(selected.filter(i => i !== item));
-            } else {
-              setSelected([...selected, item]);
-            }
-          }
         }
       };
 
@@ -1026,13 +628,6 @@
         // Validate password on signup
         if (mode === 'signup' && password.length < 6) {
           setError('Password must be at least 6 characters');
-          setLoading(false);
-          return;
-        }
-
-        // Validate age verification on signup
-        if (mode === 'signup' && !age18Plus) {
-          setError('You must be at least 18 years old to create an account');
           setLoading(false);
           return;
         }
@@ -1080,10 +675,7 @@
                 years_experience: parseInt(yearsExperience) || 0,
                 certifications: selectedCerts.length > 0 ? selectedCerts : null,
                 preferred_payment_methods: preferredPaymentMethods.length > 0 ? preferredPaymentMethods : null,
-                age_18_plus: age18Plus,
-                age_21_plus: age21Plus,
-                available: true,
-                email_notifications_enabled: true // Auto-enable email notifications for new users
+                available: true
               }])
               .select()
               .single();
@@ -1110,26 +702,32 @@
             }
 
             setUser(data);
-            window.user = data; // Set global user for push subscription
-            window.userType = 'worker'; // Set user type
             setView('worker-dashboard');
-            // Prompt for push notifications after successful signup (longer delay for mobile)
-            setTimeout(() => {
-              if ('serviceWorker' in navigator && 'PushManager' in window) {
-                // Always try to request permission/subscription
-                requestPushNotificationPermission();
-              }
-            }, 5000); // Longer delay for mobile to ensure service worker is ready
           } else {
             // Use case-insensitive email lookup to match password reset behavior
-            const { data, error: selectError } = await supabase
+            let { data, error: selectError } = await supabase
               .from('workers')
               .select('*')
               .ilike('email', email.trim())
               .eq('password_hash', passwordHash)
               .single();
 
+            // If login failed, try with fallback hash (for accounts created in Facebook browser)
             if (selectError || !data) {
+              const fallbackHash = simpleHash(password);
+              const { data: fallbackData, error: fallbackError } = await supabase
+                .from('workers')
+                .select('*')
+                .ilike('email', email.trim())
+                .eq('password_hash', fallbackHash)
+                .single();
+              
+              if (!fallbackError && fallbackData) {
+                data = fallbackData;
+              }
+            }
+
+            if (!data) {
               setError('Invalid email or password');
               setLoading(false);
               return;
@@ -1145,16 +743,7 @@
             }
 
             setUser(data);
-            window.user = data; // Set global user for push subscription
-            window.userType = 'worker'; // Set user type
             setView('worker-dashboard');
-            // Prompt for push notifications after successful login (longer delay for mobile)
-            setTimeout(() => {
-              if ('serviceWorker' in navigator && 'PushManager' in window) {
-                // Always try to request permission/subscription
-                requestPushNotificationPermission();
-              }
-            }, 5000); // Longer delay for mobile to ensure service worker is ready
           }
         } catch (err) {
           setError(formatErrorMessage(err));
@@ -1270,7 +859,7 @@
                         <button
                           key={pos}
                           type="button"
-                          onClick={() => togglePOSSelection(pos, selectedPOS, setSelectedPOS)}
+                          onClick={() => toggleSelection(pos, selectedPOS, setSelectedPOS)}
                           className={`px-3 py-2 rounded-lg text-sm transition-all ${
                             selectedPOS.includes(pos)
                               ? 'bg-green-500 text-white'
@@ -1324,42 +913,6 @@
                     </div>
                   </div>
 
-                  <div className="bg-slate-700/50 rounded-xl p-4 border-2 border-slate-600 space-y-3">
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={age18Plus}
-                        onChange={(e) => {
-                          setAge18Plus(e.target.checked);
-                          if (!e.target.checked) {
-                            setAge21Plus(false); // Uncheck 21+ if 18+ is unchecked
-                          }
-                        }}
-                        className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
-                        required
-                      />
-                      <div className="text-slate-300 text-sm flex-1">
-                        <span className="font-semibold text-white">Are you over the age of 18?</span>
-                        <p className="text-slate-400 text-xs mt-1">Required - You must be at least 18 to use LastCall</p>
-                      </div>
-                    </label>
-
-                    {age18Plus && (
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={age21Plus}
-                          onChange={(e) => setAge21Plus(e.target.checked)}
-                          className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
-                        />
-                        <div className="text-slate-300 text-sm flex-1">
-                          <span className="font-semibold text-white">Are you over the age of 21?</span>
-                          <p className="text-slate-400 text-xs mt-1">Optional - Check this if you are 21 or older (required for some positions like bartender)</p>
-                        </div>
-                      </label>
-                    )}
-                  </div>
-
                   <div className="bg-slate-700/50 rounded-xl p-4 border-2 border-slate-600">
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input
@@ -1385,7 +938,7 @@
 
               <button
                 type="submit"
-                disabled={loading || (mode === 'signup' && (!age18Plus || !acceptedTerms))}
+                disabled={loading || (mode === 'signup' && !acceptedTerms)}
                 className="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
               >
                 {loading ? 'Please wait...' : (mode === 'login' ? 'Log In' : 'Create Profile')}
@@ -1828,13 +1381,19 @@
               ? ` across ${newShifts.length} shift${newShifts.length > 1 ? 's' : ''}`
               : '';
           
-          // Push notification for new interest (works even when browser is closed)
-          showNotification('LastCall', {
-            body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest${positionText}! Total: ${currentCount}`,
-            icon: '📞',
-            badge: '📞',
-            tag: 'new-interest'
-          });
+          // Browser notification for new interest
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall', {
+                body: `${newCount} new worker${newCount > 1 ? 's' : ''} expressed interest${positionText}! Total: ${currentCount}`,
+                icon: '📞',
+                badge: '📞',
+                tag: 'new-interest'
+              });
+            } catch (err) {
+              // Notification error - silently continue
+            }
+          }
           
           // Reload shifts to show new interests
           loadShifts();
@@ -1983,7 +1542,6 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
-          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -2008,7 +1566,7 @@
           {/* New Interest Alert */}
           {newInterestAlert && (
             <div className="bg-green-500 text-white text-center py-3 px-4 font-semibold animate-pulse">
-              {newInterestAlert}
+              🔔 {newInterestAlert}
               <button onClick={() => setNewInterestAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
             </div>
           )}
@@ -2106,7 +1664,6 @@
       const [endTime, setEndTime] = useState('');
       const [hourlyRate, setHourlyRate] = useState('');
       const [tipsIncluded, setTipsIncluded] = useState(false);
-      const [ageRequirement, setAgeRequirement] = useState('18');
       const [notes, setNotes] = useState('');
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
@@ -2158,7 +1715,7 @@
         }
 
         try {
-          const { data: insertedShift, error: insertError } = await supabase
+          const { error: insertError } = await supabase
             .from('shifts')
             .insert([{
               business_id: user.id,
@@ -2168,39 +1725,14 @@
               end_time: endTime,
               hourly_rate: rate,
               tips_included: tipsIncluded,
-              age_requirement: ageRequirement,
               notes,
               status: 'open'
-            }])
-            .select()
-            .single();
+            }]);
 
           if (insertError) {
             setError(formatErrorMessage(insertError));
             setLoading(false);
             return;
-          }
-
-          // Trigger email notifications to matching workers (fire and forget)
-          // Don't wait for this to complete - it runs in the background
-          if (insertedShift) {
-            supabase.functions.invoke('send-shift-notifications', {
-              body: {
-                shift: insertedShift,
-                business: {
-                  id: user.id,
-                  business_name: user.business_name,
-                  address: user.address
-                }
-              }
-            }).then(response => {
-              console.log('Notification function called:', response);
-              if (response.error) {
-                console.error('Notification function error:', response.error);
-              }
-            }).catch(err => {
-              console.error('Notification service error:', err);
-            });
           }
 
           onSuccess();
@@ -2212,7 +1744,6 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
-          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center gap-4">
               <button onClick={onBack} className="text-slate-400 hover:text-white">
@@ -2239,20 +1770,6 @@
                   <option value="">Select position</option>
                   {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
                 </select>
-              </div>
-
-              <div>
-                <label className="text-slate-300 text-sm">Age Requirement</label>
-                <select
-                  value={ageRequirement}
-                  onChange={(e) => setAgeRequirement(e.target.value)}
-                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
-                  required
-                >
-                  <option value="18">18+ (Required)</option>
-                  <option value="21">21+ (For positions like bartender)</option>
-                </select>
-                <p className="text-slate-400 text-xs mt-1">Workers must meet this age requirement to apply</p>
               </div>
 
               <div>
@@ -2348,13 +1865,11 @@
     // Business Settings Component
     function BusinessSettings({ user, onBack, onSave }) {
       const [businessName, setBusinessName] = useState(user.business_name || '');
-      const [email, setEmail] = useState(user.email || '');
       const [address, setAddress] = useState(user.address || '');
       const [phone, setPhone] = useState(user.phone || '');
       const [posSystem, setPosSystem] = useState(user.pos_system || '');
       const [menuNotes, setMenuNotes] = useState(user.menu_notes || '');
       const [menuUrl, setMenuUrl] = useState(user.menu_url || '');
-      const [emailNotifications, setEmailNotifications] = useState(user.email_notifications_enabled !== false); // Default to true
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [success, setSuccess] = useState('');
@@ -2365,24 +1880,15 @@
         setError('');
         setSuccess('');
 
-        // Validate email format if changed
-        if (email && !isValidEmail(email)) {
-          setError('Please enter a valid email address');
-          setLoading(false);
-          return;
-        }
-
         const { data, error: updateError } = await supabase
           .from('businesses')
           .update({
             business_name: businessName,
-            email: email.trim().toLowerCase() || user.email,
             address,
             phone,
             pos_system: posSystem,
             menu_notes: menuNotes,
-            menu_url: menuUrl.trim() || null,
-            email_notifications_enabled: emailNotifications
+            menu_url: menuUrl.trim() || null
           })
           .eq('id', user.id)
           .select()
@@ -2401,7 +1907,6 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
-          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center gap-4">
               <button onClick={onBack} className="text-slate-400 hover:text-white">
@@ -2427,19 +1932,6 @@
                   className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
                   required
                 />
-              </div>
-
-              <div>
-                <label className="text-slate-300 text-sm">Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
-                  placeholder="your@email.com"
-                  required
-                />
-                <p className="text-slate-400 text-xs mt-1">This email will receive notifications about worker interest</p>
               </div>
 
               <div>
@@ -2495,21 +1987,6 @@
                   rows={3}
                   placeholder="Describe your menu, signature items, etc."
                 />
-              </div>
-
-              <div className="mt-4 p-4 bg-slate-700/50 rounded-xl border border-slate-600">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={emailNotifications}
-                    onChange={(e) => setEmailNotifications(e.target.checked)}
-                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
-                  />
-                  <div className="text-slate-300 text-sm flex-1">
-                    <span className="font-semibold text-white">Email Notifications</span>
-                    <p className="text-slate-400 text-xs mt-1">Receive email alerts when workers express interest in your shifts</p>
-                  </div>
-                </label>
               </div>
 
               <button
@@ -3228,7 +2705,6 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
-          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -3506,12 +2982,18 @@
           setRejectedAlert(alertMessage);
           
           // Browser notification
-          showNotification('LastCall - Shift Released', {
-            body: notificationBody,
-            icon: '⚠️',
-            badge: '⚠️',
-            tag: 'shift-released'
-          });
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall - Shift Released', {
+                body: notificationBody,
+                icon: '⚠️',
+                badge: '⚠️',
+                tag: 'shift-released'
+              });
+            } catch (err) {
+              // Notification error - silently continue
+            }
+          }
           
           // Reload data to update shift status
           loadData();
@@ -3525,12 +3007,18 @@
           setShiftTab('upcoming'); // Switch to upcoming tab
           
           // Browser notification
-          showNotification('LastCall - You got the shift!', {
-            body: `A business has accepted you for ${newCount} shift${newCount > 1 ? 's' : ''}!`,
-            icon: '🎉',
-            badge: '🎉',
-            tag: 'shift-accepted'
-          });
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall - You got the shift!', {
+                body: `A business has accepted you for ${newCount} shift${newCount > 1 ? 's' : ''}!`,
+                icon: '🎉',
+                badge: '🎉',
+                tag: 'shift-accepted'
+              });
+            } catch (err) {
+              // Notification error - silently continue
+            }
+          }
           
           // Reload data to show new shift
           loadData();
@@ -3565,12 +3053,18 @@
           setRejectedAlert(`❌ Someone else was picked${shiftText}. Keep looking!`);
           
           // Browser notification
-          showNotification('LastCall - Shift Filled', {
-            body: `A business picked someone else${shiftText}. Don't worry, more shifts are available!`,
-            icon: '❌',
-            badge: '❌',
-            tag: 'shift-rejected'
-          });
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall - Shift Filled', {
+                body: `A business picked someone else${shiftText}. Don't worry, more shifts are available!`,
+                icon: '❌',
+                badge: '❌',
+                tag: 'shift-rejected'
+              });
+            } catch (err) {
+              // Notification error - silently continue
+            }
+          }
           
           // Reload data to update status
           loadData();
@@ -3662,7 +3156,7 @@
             // Browser notification
             if ('Notification' in window && Notification.permission === 'granted') {
               try {
-                showNotification('LastCall - Shift Update', {
+                new Notification('LastCall - Shift Update', {
                   body: messages.join('. '),
                   icon: '⚠️',
                   badge: '⚠️',
@@ -3720,13 +3214,19 @@
         if (currentShiftCount > knownShiftCountRef.current && knownShiftCountRef.current >= 0) {
           const newShiftCount = currentShiftCount - knownShiftCountRef.current;
           
-          // Push notification for new shifts (works even when browser is closed)
-          showNotification('LastCall - New Shifts Available!', {
-            body: `${newShiftCount} new shift${newShiftCount > 1 ? 's' : ''} available!`,
-            icon: '📋',
-            badge: '📋',
-            tag: 'new-shifts'
-          });
+          // Browser notification for new shifts
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('LastCall - New Shifts Available!', {
+                body: `${newShiftCount} new shift${newShiftCount > 1 ? 's' : ''} available!`,
+                icon: '📋',
+                badge: '📋',
+                tag: 'new-shifts'
+              });
+            } catch (err) {
+              // Notification error - silently continue
+            }
+          }
           
           loadData();
         }
@@ -3912,83 +3412,9 @@
       };
 
       const expressInterest = async (shiftId) => {
-        // First, try to get the shift from the already loaded shifts
-        let shiftData = shifts.find(s => s.id === shiftId);
-        
-        // If not found in loaded shifts, query for it with full details
-        if (!shiftData) {
-          const { data, error: shiftError } = await supabase
-            .from('shifts')
-            .select('*, business:businesses(*)')
-            .eq('id', shiftId)
-            .single();
-
-          if (shiftError || !data) {
-            // If we can't get shift data, proceed anyway (graceful degradation)
-            await supabase
-              .from('interests')
-              .insert([{ shift_id: shiftId, worker_id: user.id }]);
-            knownInterestedShiftIdsRef.current.add(shiftId);
-            loadData();
-            return;
-          }
-          shiftData = data;
-        }
-
-        // Check if shift requires 21+ and worker is not 21+
-        if ((shiftData.age_requirement === '21' || shiftData.age_requirement === 21) && !user.age_21_plus) {
-          // Show error message
-          setRejectedAlert('This position requires workers 21+. You must be 21+ to apply. Update your profile if you meet this requirement.');
-          setTimeout(() => setRejectedAlert(null), 8000);
-          return;
-        }
-
-        // Age requirement met, proceed with interest
-        const { data: newInterest, error: interestError } = await supabase
+        await supabase
           .from('interests')
-          .insert([{ shift_id: shiftId, worker_id: user.id }])
-          .select()
-          .single();
-
-        if (interestError) {
-          setRejectedAlert('Failed to express interest. Please try again.');
-          setTimeout(() => setRejectedAlert(null), 5000);
-          return;
-        }
-
-        // Trigger email notification to business (fire and forget)
-        if (newInterest && shiftData) {
-          supabase.functions.invoke('notify-business-interest', {
-            body: {
-              interest: newInterest,
-              shift: {
-                id: shiftData.id,
-                business_id: shiftData.business_id || shiftData.business?.id,
-                position: shiftData.position,
-                shift_date: shiftData.shift_date,
-                start_time: shiftData.start_time,
-                end_time: shiftData.end_time,
-                hourly_rate: shiftData.hourly_rate,
-                tips_included: shiftData.tips_included,
-                age_requirement: shiftData.age_requirement,
-                notes: shiftData.notes
-              },
-              worker: {
-                id: user.id,
-                email: user.email,
-                full_name: user.full_name,
-                phone: user.phone,
-                years_experience: user.years_experience,
-                positions: user.positions,
-                certifications: user.certifications
-              }
-            }
-          }).catch(err => {
-            // Silently fail - notifications are best effort
-            console.log('Business notification service unavailable:', err);
-          });
-        }
-
+          .insert([{ shift_id: shiftId, worker_id: user.id }]);
         // Add to known interested shifts
         knownInterestedShiftIdsRef.current.add(shiftId);
         loadData();
@@ -4025,7 +3451,6 @@
 
       return (
         <div className="min-h-screen bg-slate-900">
-          <NotificationBanner />
           <header className="bg-slate-800 border-b border-slate-700 p-4">
             <div className="max-w-4xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -4240,11 +3665,6 @@
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
                                   <h3 className="text-white font-semibold">{shift.position}</h3>
-                                  {(shift.age_requirement === '21' || shift.age_requirement === 21) && (
-                                    <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded-full">
-                                      21+
-                                    </span>
-                                  )}
                                   {posMatch && (
                                     <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
                                       You know {shift.business.pos_system}!
@@ -4364,16 +3784,12 @@
     // Worker Settings Component
     function WorkerSettings({ user, onBack, onSave }) {
       const [fullName, setFullName] = useState(user.full_name || '');
-      const [email, setEmail] = useState(user.email || '');
       const [phone, setPhone] = useState(user.phone || '');
       const [yearsExperience, setYearsExperience] = useState(user.years_experience || '');
       const [selectedPOS, setSelectedPOS] = useState(user.pos_systems || []);
       const [selectedPositions, setSelectedPositions] = useState(user.positions || []);
       const [selectedCerts, setSelectedCerts] = useState(user.certifications || []);
       const [preferredPaymentMethods, setPreferredPaymentMethods] = useState(user.preferred_payment_methods || []);
-      const [age18Plus, setAge18Plus] = useState(user.age_18_plus || false);
-      const [age21Plus, setAge21Plus] = useState(user.age_21_plus || false);
-      const [emailNotifications, setEmailNotifications] = useState(user.email_notifications_enabled !== false); // Default to true
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [success, setSuccess] = useState('');
@@ -4388,57 +3804,14 @@
         }
       };
 
-      const togglePOSSelection = (item, selected, setSelected) => {
-        if (item === 'None') {
-          // If clicking "None" and it's already selected, deselect it
-          if (selected.includes('None')) {
-            setSelected([]);
-          } else {
-            // Select only "None" and clear all others
-            setSelected(['None']);
-          }
-        } else {
-          // If clicking any other POS system
-          if (selected.includes('None')) {
-            // If "None" is selected, remove it first, then toggle the clicked item
-            const withoutNone = selected.filter(i => i !== 'None');
-            if (withoutNone.includes(item)) {
-              setSelected(withoutNone.filter(i => i !== item));
-            } else {
-              setSelected([...withoutNone, item]);
-            }
-          } else {
-            // Normal toggle behavior
-            if (selected.includes(item)) {
-              setSelected(selected.filter(i => i !== item));
-            } else {
-              setSelected([...selected, item]);
-            }
-          }
-        }
-      };
-
       const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
         setSuccess('');
 
-        if (!age18Plus) {
-          setError('You must be at least 18 years old to use LastCall');
-          setLoading(false);
-          return;
-        }
-
         if (selectedPositions.length === 0) {
           setError('Please select at least one position');
-          setLoading(false);
-          return;
-        }
-
-        // Validate email format if changed
-        if (email && !isValidEmail(email)) {
-          setError('Please enter a valid email address');
           setLoading(false);
           return;
         }
@@ -4447,16 +3820,12 @@
           .from('workers')
           .update({
             full_name: fullName,
-            email: email.trim().toLowerCase() || user.email,
             phone,
             years_experience: parseInt(yearsExperience) || 0,
             pos_systems: selectedPOS,
             positions: selectedPositions,
             certifications: selectedCerts,
-            preferred_payment_methods: preferredPaymentMethods,
-            age_18_plus: age18Plus,
-            age_21_plus: age21Plus,
-            email_notifications_enabled: emailNotifications
+            preferred_payment_methods: preferredPaymentMethods
           })
           .eq('id', user.id)
           .select()
@@ -4503,19 +3872,6 @@
               </div>
 
               <div>
-                <label className="text-slate-300 text-sm">Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
-                  placeholder="your@email.com"
-                  required
-                />
-                <p className="text-slate-400 text-xs mt-1">This email will receive notifications about new shifts</p>
-              </div>
-
-              <div>
                 <label className="text-slate-300 text-sm">Phone</label>
                 <input
                   type="tel"
@@ -4535,95 +3891,6 @@
                   min="0"
                   max="50"
                 />
-              </div>
-
-              <div className="bg-slate-700/50 rounded-xl p-4 border-2 border-slate-600 space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={age18Plus}
-                    onChange={(e) => {
-                      setAge18Plus(e.target.checked);
-                      if (!e.target.checked) {
-                        setAge21Plus(false); // Uncheck 21+ if 18+ is unchecked
-                      }
-                    }}
-                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
-                    required
-                  />
-                  <div className="text-slate-300 text-sm flex-1">
-                    <span className="font-semibold text-white">Are you over the age of 18?</span>
-                    <p className="text-slate-400 text-xs mt-1">Required - You must be at least 18 to use LastCall</p>
-                  </div>
-                </label>
-
-                {age18Plus && (
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={age21Plus}
-                      onChange={(e) => setAge21Plus(e.target.checked)}
-                      className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
-                    />
-                    <div className="text-slate-300 text-sm flex-1">
-                      <span className="font-semibold text-white">Are you over the age of 21?</span>
-                      <p className="text-slate-400 text-xs mt-1">Optional - Check this if you are 21 or older (required for some positions like bartender)</p>
-                    </div>
-                  </label>
-                )}
-              </div>
-
-              <div className="mt-4 p-4 bg-slate-700/50 rounded-xl border border-slate-600">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={emailNotifications}
-                    onChange={(e) => setEmailNotifications(e.target.checked)}
-                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
-                  />
-                  <div className="text-slate-300 text-sm flex-1">
-                    <span className="font-semibold text-white">Email Notifications</span>
-                    <p className="text-slate-400 text-xs mt-1">Receive email alerts when new shifts matching your positions are posted</p>
-                  </div>
-                </label>
-              </div>
-
-              <div className="mt-4 p-4 bg-slate-700/50 rounded-xl border border-slate-600">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={(() => {
-                      // Check if push notifications are enabled
-                      if (typeof window !== 'undefined' && 'Notification' in window) {
-                        return Notification.permission === 'granted';
-                      }
-                      return false;
-                    })()}
-                    onChange={async (e) => {
-                      if (e.target.checked) {
-                        try {
-                          await requestPushNotificationPermission();
-                          setSuccess('Push notifications enabled! You\'ll receive alerts even when the browser is closed.');
-                          setTimeout(() => setSuccess(''), 5000);
-                        } catch (err) {
-                          setError('Failed to enable push notifications: ' + err.message);
-                          setTimeout(() => setError(''), 5000);
-                          e.target.checked = false; // Uncheck if failed
-                        }
-                      } else {
-                        // User wants to disable - show message
-                        setError('To disable push notifications, block them in your browser settings.');
-                        setTimeout(() => setError(''), 5000);
-                        e.target.checked = true; // Keep checked
-                      }
-                    }}
-                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500 flex-shrink-0"
-                  />
-                  <div className="text-slate-300 text-sm flex-1">
-                    <span className="font-semibold text-white">Push Notifications</span>
-                    <p className="text-slate-400 text-xs mt-1">Get instant alerts on your phone/computer, even when the browser is closed</p>
-                  </div>
-                </label>
               </div>
 
               <div>
@@ -4653,7 +3920,7 @@
                     <button
                       key={pos}
                       type="button"
-                      onClick={() => togglePOSSelection(pos, selectedPOS, setSelectedPOS)}
+                      onClick={() => toggleSelection(pos, selectedPOS, setSelectedPOS)}
                       className={`px-3 py-2 rounded-lg text-sm transition-all ${
                         selectedPOS.includes(pos)
                           ? 'bg-green-500 text-white'
@@ -4960,11 +4227,6 @@
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-white font-semibold">{shift.position}</h3>
-                {(shift.age_requirement === '21' || shift.age_requirement === 21) && (
-                  <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded-full">
-                    21+
-                  </span>
-                )}
                 {showStatus && (
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     shift.status === 'filled' ? 'bg-green-500/20 text-green-400' :
