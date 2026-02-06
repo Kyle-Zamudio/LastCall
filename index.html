@@ -1372,20 +1372,31 @@
       const [selectedShift, setSelectedShift] = useState(null);
       const [loading, setLoading] = useState(true);
       const [newInterestAlert, setNewInterestAlert] = useState(null);
+      const [showNotifBanner, setShowNotifBanner] = useState(false);
       const knownInterestCountRef = React.useRef(-1); // -1 means not initialized yet
 
-      // Request notification permission on mount
+      // Show custom notification banner instead of auto-prompting
       useEffect(() => {
-        if ('Notification' in window) {
-          if (Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-              if (permission === 'granted') {
-              }
-            });
-          } else if (Notification.permission === 'denied') {
+        if ('Notification' in window && Notification.permission === 'default') {
+          const dismissed = localStorage.getItem('lastcall_notif_dismissed');
+          if (!dismissed || Date.now() - parseInt(dismissed) > 3 * 24 * 60 * 60 * 1000) {
+            setShowNotifBanner(true);
           }
         }
       }, []);
+
+      const handleEnableNotifications = async () => {
+        const permission = await Notification.requestPermission();
+        setShowNotifBanner(false);
+        if (permission === 'denied') {
+          localStorage.setItem('lastcall_notif_dismissed', Date.now().toString());
+        }
+      };
+
+      const dismissNotifBanner = () => {
+        setShowNotifBanner(false);
+        localStorage.setItem('lastcall_notif_dismissed', Date.now().toString());
+      };
 
       const checkForNewInterests = React.useCallback(async () => {
         // Get open shifts with their details
@@ -1649,11 +1660,27 @@
             </div>
           </header>
 
+          {/* Notification Permission Banner */}
+          {showNotifBanner && (
+            <div className="bg-gradient-to-r from-brand-600 to-brand-700 text-white px-4 py-4">
+              <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">Never miss a worker interested in your shift</p>
+                  <p className="text-xs text-white/80 mt-1">Get instant notifications when someone wants to fill your open shifts</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={handleEnableNotifications} className="bg-white text-brand-600 px-4 py-2 rounded-lg text-sm font-semibold">Enable</button>
+                  <button onClick={dismissNotifBanner} className="text-white/60 text-lg px-1">&times;</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* New Interest Alert */}
           {newInterestAlert && (
             <div className="bg-green-500 text-white text-center py-3 px-4 font-semibold animate-pulse">
-              🔔 {newInterestAlert}
-              <button onClick={() => setNewInterestAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
+              {newInterestAlert}
+              <button onClick={() => setNewInterestAlert(null)} className="ml-4 text-white/80 hover:text-white">&times;</button>
             </div>
           )}
 
@@ -2989,19 +3016,30 @@
       const knownRejectedCountRef = React.useRef(-1); // -1 means not initialized yet
       const knownShiftCountRef = React.useRef(-1); // Track shift count for auto-refresh
       const knownInterestedShiftIdsRef = React.useRef(new Set()); // Track which shifts worker is interested in
+      const [showNotifBanner, setShowNotifBanner] = useState(false);
 
-      // Request notification permission on mount
+      // Show custom notification banner instead of auto-prompting
       useEffect(() => {
-        if ('Notification' in window) {
-          if (Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-              if (permission === 'granted') {
-              }
-            });
-          } else if (Notification.permission === 'denied') {
+        if ('Notification' in window && Notification.permission === 'default') {
+          const dismissed = localStorage.getItem('lastcall_notif_dismissed');
+          if (!dismissed || Date.now() - parseInt(dismissed) > 3 * 24 * 60 * 60 * 1000) {
+            setShowNotifBanner(true);
           }
         }
       }, []);
+
+      const handleEnableNotifications = async () => {
+        const permission = await Notification.requestPermission();
+        setShowNotifBanner(false);
+        if (permission === 'denied') {
+          localStorage.setItem('lastcall_notif_dismissed', Date.now().toString());
+        }
+      };
+
+      const dismissNotifBanner = () => {
+        setShowNotifBanner(false);
+        localStorage.setItem('lastcall_notif_dismissed', Date.now().toString());
+      };
 
       const checkForAcceptedShifts = React.useCallback(async () => {
         // Check for accepted interests with shift details
@@ -3558,11 +3596,27 @@
             </div>
           </header>
 
+          {/* Notification Permission Banner */}
+          {showNotifBanner && (
+            <div className="bg-gradient-to-r from-brand-600 to-brand-700 text-white px-4 py-4">
+              <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">Get notified when shifts open up</p>
+                  <p className="text-xs text-white/80 mt-1">Be the first to know when a business posts a shift that matches your skills</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={handleEnableNotifications} className="bg-white text-brand-600 px-4 py-2 rounded-lg text-sm font-semibold">Enable</button>
+                  <button onClick={dismissNotifBanner} className="text-white/60 text-lg px-1">&times;</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Accepted Shift Alert */}
           {acceptedAlert && (
             <div className="bg-green-500 text-white text-center py-3 px-4 font-semibold animate-pulse">
               {acceptedAlert}
-              <button onClick={() => setAcceptedAlert(null)} className="ml-4 text-white/80 hover:text-white">✕</button>
+              <button onClick={() => setAcceptedAlert(null)} className="ml-4 text-white/80 hover:text-white">&times;</button>
             </div>
           )}
 
