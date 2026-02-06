@@ -647,6 +647,7 @@
       const [password, setPassword] = useState('');
       const [fullName, setFullName] = useState('');
       const [phone, setPhone] = useState('');
+      const [zipCode, setZipCode] = useState('');
       const [selectedPOS, setSelectedPOS] = useState([]);
       const [selectedPositions, setSelectedPositions] = useState([]);
       const [yearsExperience, setYearsExperience] = useState('');
@@ -701,6 +702,11 @@
             setLoading(false);
             return;
           }
+          if (!zipCode || zipCode.trim().length !== 5) {
+            setError('Please enter a valid 5-digit zip code');
+            setLoading(false);
+            return;
+          }
           if (!age18Plus) {
             setError('You must confirm you are 18 or older to create a profile');
             setLoading(false);
@@ -730,6 +736,7 @@
                 password_hash: passwordHash,
                 full_name: fullName.trim(),
                 phone: phone.trim() || null,
+                zip_code: zipCode.trim() || null,
                 pos_systems: selectedPOS.length > 0 ? selectedPOS : null,
                 positions: selectedPositions,
                 years_experience: parseInt(yearsExperience) || 0,
@@ -879,6 +886,19 @@
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm">Zip Code <span className="text-brand-400">*</span></label>
+                    <input
+                      type="text"
+                      value={zipCode}
+                      onChange={(e) => setZipCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                      placeholder="e.g. 20147"
+                      className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                      maxLength={5}
+                      inputMode="numeric"
                     />
                   </div>
 
@@ -3925,6 +3945,7 @@
     function WorkerSettings({ user, onBack, onSave }) {
       const [fullName, setFullName] = useState(user.full_name || '');
       const [phone, setPhone] = useState(user.phone || '');
+      const [zipCode, setZipCode] = useState(user.zip_code || '');
       const [yearsExperience, setYearsExperience] = useState(user.years_experience || '');
       const [selectedPOS, setSelectedPOS] = useState(user.pos_systems || []);
       const [selectedPositions, setSelectedPositions] = useState(user.positions || []);
@@ -3963,6 +3984,7 @@
           .update({
             full_name: fullName,
             phone,
+            zip_code: zipCode.trim() || null,
             years_experience: parseInt(yearsExperience) || 0,
             pos_systems: selectedPOS,
             positions: selectedPositions,
@@ -4022,6 +4044,19 @@
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm">Zip Code</label>
+                <input
+                  type="text"
+                  value={zipCode}
+                  onChange={(e) => setZipCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                  placeholder="e.g. 20147"
+                  className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-xl text-white focus:border-brand-500 focus:outline-none"
+                  maxLength={5}
+                  inputMode="numeric"
                 />
               </div>
 
