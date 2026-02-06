@@ -701,6 +701,11 @@
             setLoading(false);
             return;
           }
+          if (!age18Plus) {
+            setError('You must confirm you are 18 or older to create a profile');
+            setLoading(false);
+            return;
+          }
           if (selectedPositions.length === 0) {
             setError('Please select at least one position');
             setLoading(false);
