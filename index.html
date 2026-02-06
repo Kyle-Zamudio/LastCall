@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#ef4444">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="LastCall">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
   <title>LastCall - Shift Coverage in Minutes</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -144,6 +150,38 @@
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [success, setSuccess] = useState('');
+      const [installPrompt, setInstallPrompt] = useState(null);
+      const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+      // Listen for PWA install prompt
+      useEffect(() => {
+        const handler = (e) => {
+          e.preventDefault();
+          setInstallPrompt(e);
+          // Only show if not already installed and not dismissed recently
+          const dismissed = localStorage.getItem('lastcall_install_dismissed');
+          if (!dismissed || Date.now() - parseInt(dismissed) > 7 * 24 * 60 * 60 * 1000) {
+            setShowInstallBanner(true);
+          }
+        };
+        window.addEventListener('beforeinstallprompt', handler);
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+      }, []);
+
+      const handleInstall = async () => {
+        if (!installPrompt) return;
+        installPrompt.prompt();
+        const result = await installPrompt.userChoice;
+        if (result.outcome === 'accepted') {
+          setShowInstallBanner(false);
+          setInstallPrompt(null);
+        }
+      };
+
+      const dismissInstall = () => {
+        setShowInstallBanner(false);
+        localStorage.setItem('lastcall_install_dismissed', Date.now().toString());
+      };
 
       // Check for saved session
       useEffect(() => {
@@ -168,6 +206,21 @@
       if (view === 'landing') {
         return (
           <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 flex flex-col items-center justify-between p-6 pb-8">
+            {showInstallBanner && (
+              <div className="fixed top-0 left-0 right-0 bg-brand-600 text-white px-4 py-3 flex items-center justify-between z-50 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <Logo size="small" />
+                  <div>
+                    <p className="font-semibold text-sm">Install LastCall</p>
+                    <p className="text-xs text-white/80">Add to home screen for the best experience</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleInstall} className="bg-white text-brand-600 px-3 py-1 rounded-lg text-sm font-semibold">Install</button>
+                  <button onClick={dismissInstall} className="text-white/70 text-xl leading-none px-1">&times;</button>
+                </div>
+              </div>
+            )}
             <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md">
               <div className="text-center mb-12 flex flex-col items-center">
                 <Logo size="large" />
