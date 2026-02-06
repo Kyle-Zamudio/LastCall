@@ -652,6 +652,8 @@
       const [yearsExperience, setYearsExperience] = useState('');
       const [selectedCerts, setSelectedCerts] = useState([]);
       const [preferredPaymentMethods, setPreferredPaymentMethods] = useState([]);
+      const [age18Plus, setAge18Plus] = useState(false);
+      const [age21Plus, setAge21Plus] = useState(false);
       const [acceptedTerms, setAcceptedTerms] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
@@ -728,6 +730,8 @@
                 years_experience: parseInt(yearsExperience) || 0,
                 certifications: selectedCerts.length > 0 ? selectedCerts : null,
                 preferred_payment_methods: preferredPaymentMethods.length > 0 ? preferredPaymentMethods : null,
+                age_18_plus: age18Plus,
+                age_21_plus: age21Plus,
                 available: true
               }])
               .select()
@@ -963,6 +967,30 @@
                           {method}
                         </button>
                       ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-300 text-sm mb-2 block font-semibold">Age Verification</label>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={age18Plus}
+                          onChange={(e) => { setAge18Plus(e.target.checked); if (!e.target.checked) setAge21Plus(false); }}
+                          className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500"
+                        />
+                        <span className="text-slate-300 text-sm">I am 18 or older</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={age21Plus}
+                          onChange={(e) => { setAge21Plus(e.target.checked); if (e.target.checked) setAge18Plus(true); }}
+                          className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500"
+                        />
+                        <span className="text-slate-300 text-sm">I am 21 or older</span>
+                      </label>
                     </div>
                   </div>
 
@@ -3843,10 +3871,12 @@
       const [selectedPositions, setSelectedPositions] = useState(user.positions || []);
       const [selectedCerts, setSelectedCerts] = useState(user.certifications || []);
       const [preferredPaymentMethods, setPreferredPaymentMethods] = useState(user.preferred_payment_methods || []);
+      const [age18Plus, setAge18Plus] = useState(user.age_18_plus || false);
+      const [age21Plus, setAge21Plus] = useState(user.age_21_plus || false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [success, setSuccess] = useState('');
-      
+
       const PAYMENT_METHODS = ['Cash', 'Venmo', 'PayPal', 'Zelle', 'Cash App', 'Check', 'Other'];
 
       const toggleSelection = (item, selected, setSelected) => {
@@ -3878,7 +3908,9 @@
             pos_systems: selectedPOS,
             positions: selectedPositions,
             certifications: selectedCerts,
-            preferred_payment_methods: preferredPaymentMethods
+            preferred_payment_methods: preferredPaymentMethods,
+            age_18_plus: age18Plus,
+            age_21_plus: age21Plus
           })
           .eq('id', user.id)
           .select()
@@ -4024,6 +4056,30 @@
                       {method}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 text-sm mb-2 block font-semibold">Age Verification</label>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={age18Plus}
+                      onChange={(e) => { setAge18Plus(e.target.checked); if (!e.target.checked) setAge21Plus(false); }}
+                      className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500"
+                    />
+                    <span className="text-slate-300 text-sm">I am 18 or older</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={age21Plus}
+                      onChange={(e) => { setAge21Plus(e.target.checked); if (e.target.checked) setAge18Plus(true); }}
+                      className="w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-500 focus:ring-brand-500"
+                    />
+                    <span className="text-slate-300 text-sm">I am 21 or older</span>
+                  </label>
                 </div>
               </div>
 
